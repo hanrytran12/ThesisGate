@@ -55,16 +55,9 @@ class ThesisGateDashboardPage extends StatelessWidget {
                 Expanded(
                   child: Align(
                     alignment: Alignment.centerRight,
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        IconButton(onPressed: () {}, icon: const Icon(Icons.notifications_none, color: Color(0xFF434655))),
-                        const Positioned(
-                          right: 10,
-                          top: 14,
-                          child: CircleAvatar(radius: 4, backgroundColor: Color(0xFFBA1A1A)),
-                        ),
-                      ],
+                    child: IconButton(
+                      onPressed: () {},
+                      icon: const Icon(Icons.notifications_none, color: Color(0xFF434655)),
                     ),
                   ),
                 ),
@@ -82,13 +75,13 @@ class ThesisGateDashboardPage extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(color: const Color(0xFFDBE1FF), borderRadius: BorderRadius.circular(999)),
-                        child: const Text('Automation Tools v2.0', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+                        child: const Text('ThesisGate v1.0.0', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
                       ),
                       const SizedBox(height: 16),
-                      const Text('Bắt đầu sinh file CMT', style: TextStyle(fontSize: 40, fontWeight: FontWeight.w700)),
+                      const Text('Tự động tạo file CMT từ Google Sheet', style: TextStyle(fontSize: 40, fontWeight: FontWeight.w700)),
                       const SizedBox(height: 10),
                       const Text(
-                        'Dán đường dẫn Google Sheet của bạn vào bên dưới để hệ thống xử lý tự động.',
+                        'Nhập link Google Sheet để hệ thống xử lý và xuất file CMT hoàn toàn tự động.',
                         textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 16, color: Color(0xFF434655)),
                       ),
@@ -121,13 +114,13 @@ class ThesisGateDashboardPage extends StatelessWidget {
                                   child: FilledButton.icon(
                                     onPressed: () {},
                                     icon: const Icon(Icons.bolt),
-                                    label: const Text('Nhập link Google Sheet', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                                    label: const Text('Tải Dữ Liệu', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
                                   ),
                                 ),
                               ],
                             ),
                             const SizedBox(height: 12),
-                            const Text('Hơn 500 sinh viên đã sử dụng thành công', style: TextStyle(fontSize: 12, color: Color(0xFF434655))),
+                            //const Text('Hơn 500 sinh viên đã sử dụng thành công', style: TextStyle(fontSize: 12, color: Color(0xFF434655))),
                           ],
                         ),
                       ),
@@ -136,11 +129,11 @@ class ThesisGateDashboardPage extends StatelessWidget {
                       const SizedBox(height: 16),
                       Row(
                         children: const [
-                          Expanded(child: _StepCard(icon: Icons.table_chart, title: '1. Chuẩn bị Sheet', desc: 'Đảm bảo danh sách sinh viên đúng định dạng cột quy định.')),
+                          Expanded(child: _StepCard(icon: Icons.table_chart, title: '1. Chuẩn bị Google Sheet', desc: 'Hãy chắc rằng danh sách sinh viên đều được nhập đúng cột và đúng thông tin nhé.')),
                           SizedBox(width: 16),
-                          Expanded(child: _StepCard(icon: Icons.link, title: '2. Nhập Link', desc: 'Copy và dán URL Google Sheet vào thanh công cụ phía trên.')),
+                          Expanded(child: _StepCard(icon: Icons.link, title: '2. Dán link Google Sheet', desc: 'Copy đường dẫn Google Sheet của bạn rồi dán vào ô phía trên để hệ thống đọc dữ liệu.')),
                           SizedBox(width: 16),
-                          Expanded(child: _StepCard(icon: Icons.folder_zip, title: '3. Tải ZIP', desc: 'Hệ thống nén tất cả file CMT thành một file ZIP duy nhất.')),
+                          Expanded(child: _StepCard(icon: Icons.folder_zip, title: '3. Tải file ZIP', desc: 'Hệ thống sẽ tự tạo các file CMT và nén lại cho bạn tải về chỉ trong một lần.')),
                         ],
                       ),
                       const SizedBox(height: 48),
