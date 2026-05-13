@@ -1,0 +1,21 @@
+name: thesis_gate
+
+packages:
+  - apps/**
+  - packages/**
+
+scripts:
+  # Lệnh sinh code tự động (chạy json_serializable)
+  build:models:
+    run: dart run melos exec -c 1 --depends-on="build_runner" -- "dart run build_runner build --delete-conflicting-outputs"
+    description: "Chạy code generation cho các package có dùng build_runner (như shared_models)."
+
+  # Khởi chạy backend
+  run:backend:
+    run: dart run melos exec -c 1 --dir-exists="bin" --depends-on="shelf" -- "dart run bin/backend.dart"
+    description: "Khởi chạy server Backend."
+
+  # Khởi chạy frontend
+  run:frontend:
+    run: dart run melos exec -c 1 --scope="frontend" -- "flutter run -d chrome"
+    description: "Khởi chạy ứng dụng Frontend (Flutter trên Chrome)."

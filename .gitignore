@@ -1,0 +1,19 @@
+# Dart
+.dart_tool/
+.packages
+build/
+# pubspec.lock (thường thì các app sẽ commit file này, nhưng ở root của melos thì có thể bỏ qua hoặc giữ tùy bạn, tạm thời mình giữ lại)
+
+# IDEs (Android Studio, IntelliJ, VS Code)
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# Mac/Windows
+.DS_Store
+Thumbs.db
+
+# Melos
+.melos_tool/
