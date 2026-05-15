@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Formatters.Binary;
 using Newtonsoft.Json;
+using System.Text;
 
 namespace FgDecoder
 {
@@ -13,6 +14,8 @@ namespace FgDecoder
     {
         static int Main(string[] args)
         {
+            Console.OutputEncoding = new UTF8Encoding(false);
+            Console.InputEncoding = new UTF8Encoding(false);
             if (args.Length < 1)
             {
                 Console.Error.WriteLine("Usage: decoder.exe <path_to_file.fg>");
@@ -73,8 +76,8 @@ namespace FgDecoder
                     {
                         var sc = new SubjectClassResult();
                         // Đúng tên field: Subject + Class
-                        sc.Subject = GetAnyStringField(scg, "Subject");
-                        sc.Class   = GetAnyStringField(scg, "Class");
+                        sc.Subject = NormalizeText(GetAnyStringField(scg, "Subject"));
+                        sc.Class   = NormalizeText(GetAnyStringField(scg, "Class"));
 
                         // Lấy list sinh viên từ field "Students"
                         var studentsEnum = GetField<IEnumerable>(scg, "Students");
@@ -87,9 +90,9 @@ namespace FgDecoder
 
                                 // Student dùng auto-property → backing field <Roll>k__BackingField
                                 // Nhưng GetAnyStringField tìm property trước → đúng
-                                var roll    = GetAnyStringField(stu, "Roll");
-                                var name    = GetAnyStringField(stu, "Name");
-                                var comment = GetAnyStringField(stu, "Comment");
+                                var roll    = NormalizeText(GetAnyStringField(stu, "Roll"));
+                                var name    = NormalizeText(GetAnyStringField(stu, "Name"));
+                                var comment = NormalizeText(GetAnyStringField(stu, "Comment"));
 
                                 // Lấy các GradeComponent
                                 var gradeComponents = new List<GradeComponentRecord>();
@@ -101,8 +104,8 @@ namespace FgDecoder
                                         if (gc == null) continue;
                                         gradeComponents.Add(new GradeComponentRecord
                                         {
-                                            Component = GetAnyStringField(gc, "Component") ?? "",
-                                            Grade     = GetAnyStringField(gc, "Grade")     ?? ""
+                                            Component = NormalizeText(GetAnyStringField(gc, "Component") ?? ""),
+                                            Grade     = NormalizeText(GetAnyStringField(gc, "Grade")     ?? "")
                                         });
                                     }
                                 }
@@ -123,7 +126,7 @@ namespace FgDecoder
                 }
 
                 var json = JsonConvert.SerializeObject(output, Formatting.None);
-                Console.Write(json);
+                Console.Write(NormalizeText(json));
                 return 0;
             }
             catch (Exception ex)
@@ -271,6 +274,12 @@ namespace FgDecoder
         // ──────────────────────────────────────────────
         // Debug dump — in ra stderr để không ảnh hưởng stdout JSON
         // ──────────────────────────────────────────────
+        static string NormalizeText(string input)
+        {
+            if (string.IsNullOrEmpty(input)) return input ?? "";
+            return input.Normalize(NormalizationForm.FormC);
+        }
+
         static void DumpDeep(object obj, string label, int depth, int maxDepth = 3)
         {
             if (obj == null || depth > maxDepth) return;
