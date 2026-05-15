@@ -23,5 +23,14 @@ Thumbs.db
 # Environment files
 **/.env
 
+# Local generated outputs / samples
+apps/backend/outputs/
+apps/decoder/*.cmt
+apps/decoder/*_dump.txt
+apps/decoder/sample_*.cmt
+apps/decoder/new_*.cmt
+apps/decoder/libs/FuGrade.dll
+apps/decoder/libs/Newtonsoft.Json.dll
+
 # Melos
 .melos_tool/
