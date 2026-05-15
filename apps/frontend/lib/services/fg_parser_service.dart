@@ -90,8 +90,8 @@ class FgParserService {
       processResult = await Process.run(
         decoderPath,
         [filePath],
-        stdoutEncoding: utf8,
-        stderrEncoding: utf8,
+        stdoutEncoding: systemEncoding,
+        stderrEncoding: systemEncoding,
       ).timeout(
         _timeout,
         onTimeout: () => throw TimeoutException(
