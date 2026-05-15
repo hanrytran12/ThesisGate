@@ -1,5 +1,0 @@
-D:\my_lab1\ThesisGate\apps\decoder\bin\Release\publish\decoder.exe
-D:\my_lab1\ThesisGate\apps\decoder\bin\Release\publish\decoder.exe.config
-D:\my_lab1\ThesisGate\apps\decoder\bin\Release\publish\decoder.pdb
-D:\my_lab1\ThesisGate\apps\decoder\bin\Release\publish\Newtonsoft.Json.dll
-D:\my_lab1\ThesisGate\apps\decoder\bin\Release\publish\FuGradeLib.dll

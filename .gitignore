@@ -15,5 +15,13 @@ build/
 .DS_Store
 Thumbs.db
 
+# .NET / Visual Studio artifacts
+**/bin/
+**/obj/
+**/.vs/
+
+# Environment files
+**/.env
+
 # Melos
 .melos_tool/
