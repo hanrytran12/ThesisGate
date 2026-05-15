@@ -1,0 +1,15 @@
+D:\my_lab1\ThesisGate\apps\decoder\bin\Debug\net48\decoder.exe.config
+D:\my_lab1\ThesisGate\apps\decoder\bin\Debug\net48\decoder.exe
+D:\my_lab1\ThesisGate\apps\decoder\bin\Debug\net48\decoder.pdb
+D:\my_lab1\ThesisGate\apps\decoder\bin\Debug\net48\Newtonsoft.Json.dll
+D:\my_lab1\ThesisGate\apps\decoder\bin\Debug\net48\FuGradeLib.dll
+D:\my_lab1\ThesisGate\apps\decoder\obj\Debug\net48\decoder.csproj.AssemblyReference.cache
+D:\my_lab1\ThesisGate\apps\decoder\obj\Debug\net48\decoder.GeneratedMSBuildEditorConfig.editorconfig
+D:\my_lab1\ThesisGate\apps\decoder\obj\Debug\net48\decoder.AssemblyInfoInputs.cache
+D:\my_lab1\ThesisGate\apps\decoder\obj\Debug\net48\decoder.AssemblyInfo.cs
+D:\my_lab1\ThesisGate\apps\decoder\obj\Debug\net48\decoder.csproj.CoreCompileInputs.cache
+D:\my_lab1\ThesisGate\apps\decoder\obj\Debug\net48\decoder.sourcelink.json
+D:\my_lab1\ThesisGate\apps\decoder\obj\Debug\net48\decoder.csproj.Up2Date
+D:\my_lab1\ThesisGate\apps\decoder\obj\Debug\net48\decoder.exe
+D:\my_lab1\ThesisGate\apps\decoder\obj\Debug\net48\decoder.pdb
+D:\my_lab1\ThesisGate\apps\decoder\obj\Debug\net48\decoder.exe.config

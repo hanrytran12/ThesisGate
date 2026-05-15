@@ -1,43 +1,29 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-import 'package:shared_models/user_model.dart'; // Dùng Model chung
+import 'screens/home_screen.dart';
 
-void main() => runApp(MaterialApp(home: HomeScreen()));
-
-class HomeScreen extends StatefulWidget {
-  @override
-  _HomeScreenState createState() => _HomeScreenState();
+void main() {
+  runApp(const ThesisGateApp());
 }
 
-class _HomeScreenState extends State<HomeScreen> {
-  User? user;
-
-  // Hàm gọi API từ Backend
-  Future<void> fetchData() async {
-    // Lưu ý: Nếu dùng trình giả lập Android, hãy thay 'localhost' bằng '10.0.2.2'
-    final response = await http.get(Uri.parse('http://localhost:8080/user'));
-
-    if (response.statusCode == 200) {
-      setState(() {
-        user = User.fromJson(jsonDecode(response.body));
-      });
-    }
-  }
+class ThesisGateApp extends StatelessWidget {
+  const ThesisGateApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text('Flutter Fullstack Dart')),
-      body: Center(
-        child: user == null
-            ? Text('Chưa có dữ liệu')
-            : Text('Xin chào: ${user!.name} (ID: ${user!.id})'),
+    return MaterialApp(
+      title: 'ThesisGate',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: const Color(0xFF0D1117),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF2188FF),
+          brightness: Brightness.dark,
+        ),
+        fontFamily: 'Segoe UI',
+        useMaterial3: true,
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: fetchData,
-        child: Icon(Icons.refresh),
-      ),
+      home: const HomeScreen(),
     );
   }
 }

@@ -1,0 +1,14 @@
+D:\my_lab1\ThesisGate\apps\decoder\bin\Release\net48\win-x64\decoder.exe.config
+D:\my_lab1\ThesisGate\apps\decoder\bin\Release\net48\win-x64\decoder.exe
+D:\my_lab1\ThesisGate\apps\decoder\bin\Release\net48\win-x64\decoder.pdb
+D:\my_lab1\ThesisGate\apps\decoder\bin\Release\net48\win-x64\Newtonsoft.Json.dll
+D:\my_lab1\ThesisGate\apps\decoder\bin\Release\net48\win-x64\FuGradeLib.dll
+D:\my_lab1\ThesisGate\apps\decoder\obj\Release\net48\win-x64\decoder.csproj.AssemblyReference.cache
+D:\my_lab1\ThesisGate\apps\decoder\obj\Release\net48\win-x64\decoder.GeneratedMSBuildEditorConfig.editorconfig
+D:\my_lab1\ThesisGate\apps\decoder\obj\Release\net48\win-x64\decoder.AssemblyInfoInputs.cache
+D:\my_lab1\ThesisGate\apps\decoder\obj\Release\net48\win-x64\decoder.AssemblyInfo.cs
+D:\my_lab1\ThesisGate\apps\decoder\obj\Release\net48\win-x64\decoder.csproj.CoreCompileInputs.cache
+D:\my_lab1\ThesisGate\apps\decoder\obj\Release\net48\win-x64\decoder.sourcelink.json
+D:\my_lab1\ThesisGate\apps\decoder\obj\Release\net48\win-x64\decoder.csproj.Up2Date
+D:\my_lab1\ThesisGate\apps\decoder\obj\Release\net48\win-x64\decoder.exe
+D:\my_lab1\ThesisGate\apps\decoder\obj\Release\net48\win-x64\decoder.pdb
