@@ -30,7 +30,9 @@ class _HomeScreenState extends State<HomeScreen> {
   bool                _isLoading = false;
   String?             _errorMessage;
   bool                _isCreatingSheet = false;
+  bool                _isImportingSheet = false;
   String?             _lastSheetError;
+  final TextEditingController _sheetUrlController = TextEditingController();
 
   // Columns hiển thị — luôn có STT, Roll, Name, Comment + các Grade components
   List<String> get _gradeComponents {
@@ -84,6 +86,62 @@ class _HomeScreenState extends State<HomeScreen> {
       _fileName      = null;
       _errorMessage  = null;
     });
+  }
+
+  Future<void> _showImportSheetDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF161B22),
+        title: const Text('Import Google Sheet -> Tạo CMT', style: TextStyle(color: Colors.white)),
+        content: TextField(
+          controller: _sheetUrlController,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            hintText: 'Dán link Google Sheet...',
+            hintStyle: TextStyle(color: Color(0xFF8B949E)),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Huỷ')),
+          TextButton(
+            onPressed: _isImportingSheet ? null : () async {
+              final url = _sheetUrlController.text.trim();
+              if (url.isEmpty) return;
+              Navigator.of(context).pop();
+              await _importSheetToCmt(url);
+            },
+            child: const Text('Tạo CMT'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _importSheetToCmt(String sheetUrl) async {
+    setState(() => _isImportingSheet = true);
+    try {
+      final result = await _sheetService.importFromGoogleSheetUrl(sheetUrl);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: const Color(0xFF238636),
+          content: Text('Tạo CMT thành công: ${result['cmtFilePath'] ?? '(không rõ đường dẫn)'}'),
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: const Color(0xFFDA3633),
+          content: Text('Import sheet thất bại: $e'),
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isImportingSheet = false);
+    }
   }
 
   Future<void> _createThesisSheet() async {
@@ -230,6 +288,13 @@ class _HomeScreenState extends State<HomeScreen> {
               label: _isCreatingSheet ? 'Đang tạo Sheet...' : 'Tạo Google Sheet',
               color: const Color(0xFF1F6FEB),
               onPressed: _isCreatingSheet ? null : _createThesisSheet,
+            ),
+            const SizedBox(width: 8),
+            _TopBarButton(
+              icon: Icons.cloud_download_outlined,
+              label: _isImportingSheet ? 'Đang tạo CMT...' : 'Import link -> Tạo CMT',
+              color: const Color(0xFF8957E5),
+              onPressed: _isImportingSheet ? null : _showImportSheetDialog,
             ),
             const SizedBox(width: 8),
 
