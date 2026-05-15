@@ -28,11 +28,13 @@ class FgParserService {
       // 1. Production: decoder.exe cạnh frontend.exe
       p.join(exeDir, 'decoder.exe'),
 
-      // 2. Dev: Debug build trong monorepo
-      r'D:\my_lab1\ThesisGate\apps\decoder\bin\Debug\net48\decoder.exe',
+      // 2. Dev: Chạy từ 'apps/frontend' (flutter run)
+      p.join(Directory.current.path, '..', 'decoder', 'bin', 'Debug', 'net48', 'decoder.exe'),
+      p.join(Directory.current.path, '..', 'decoder', 'bin', 'Release', 'publish', 'decoder.exe'),
 
-      // 3. Dev: Release/publish build
-      r'D:\my_lab1\ThesisGate\apps\decoder\bin\Release\publish\decoder.exe',
+      // 3. Dev: Chạy từ thư mục gốc của project (melos run)
+      p.join(Directory.current.path, 'apps', 'decoder', 'bin', 'Debug', 'net48', 'decoder.exe'),
+      p.join(Directory.current.path, 'apps', 'decoder', 'bin', 'Release', 'publish', 'decoder.exe'),
     ];
 
     for (final path in candidates) {
