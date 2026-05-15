@@ -16,10 +16,16 @@ namespace FgDecoder
         {
             Console.OutputEncoding = new UTF8Encoding(false);
             Console.InputEncoding = new UTF8Encoding(false);
+            if (args.Length >= 3 && args[0] == "--build-cmt")
+            {
+                return BuildCmt(args[1], args[2]);
+            }
+
             if (args.Length < 1)
             {
                 Console.Error.WriteLine("Usage: decoder.exe <path_to_file.fg>");
                 Console.Error.WriteLine("       decoder.exe <path_to_file.fg> --debug");
+                Console.Error.WriteLine("       decoder.exe --build-cmt <input.json> <output.cmt>");
                 return 1;
             }
 
@@ -360,6 +366,153 @@ namespace FgDecoder
             }
 
             return null;
+        }
+
+        static int BuildCmt(string inputJsonPath, string outputCmtPath)
+        {
+            try
+            {
+                if (!File.Exists(inputJsonPath))
+                {
+                    Console.Error.WriteLine($"BuildCmt ERROR: input json not found: {inputJsonPath}");
+                    return 1;
+                }
+
+                AppDomain.CurrentDomain.AssemblyResolve += ResolveAssembly;
+                var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+                var fuGradePath = Path.Combine(baseDir, "FuGrade.dll");
+                if (!File.Exists(fuGradePath))
+                {
+                    Console.Error.WriteLine("BuildCmt ERROR: Missing FuGrade.dll near decoder.exe");
+                    return 1;
+                }
+
+                var asm = Assembly.LoadFrom(fuGradePath);
+                var thesisCommentType = asm.GetType("FuGrade.ThesisComment", throwOnError: true);
+                var thesisStudentType = asm.GetType("FuGrade.ThesisStudent", throwOnError: true);
+
+                var json = JsonConvert.DeserializeObject<Newtonsoft.Json.Linq.JObject>(File.ReadAllText(inputJsonPath));
+                var sheetName = json?["sheetName"]?.ToString() ?? "SEP490_IMPORT";
+
+                var commentObj = Activator.CreateInstance(thesisCommentType);
+                SetIfExists(commentObj, thesisCommentType, "Teacher", "sheet-import");
+                SetIfExists(commentObj, thesisCommentType, "DT", DateTime.Now);
+                SetIfExists(commentObj, thesisCommentType, "SubjectCode", "SEP490");
+                SetIfExists(commentObj, thesisCommentType, "ClassName", sheetName);
+                SetIfExists(commentObj, thesisCommentType, "Semester", "");
+                SetIfExists(commentObj, thesisCommentType, "Password", "");
+                SetIfExists(commentObj, thesisCommentType, "TitleVN", "");
+                SetIfExists(commentObj, thesisCommentType, "TitleEN", "");
+                SetIfExists(commentObj, thesisCommentType, "Content", "");
+                SetIfExists(commentObj, thesisCommentType, "Form", "");
+                SetIfExists(commentObj, thesisCommentType, "Attitude", "");
+                SetIfExists(commentObj, thesisCommentType, "Achievement", "");
+                SetIfExists(commentObj, thesisCommentType, "Limitation", "");
+
+                var studentsToken = json?["students"] as Newtonsoft.Json.Linq.JArray;
+                var studentsListObj = Activator.CreateInstance(typeof(List<>).MakeGenericType(thesisStudentType));
+                var addMethod = studentsListObj.GetType().GetMethod("Add");
+
+                if (studentsToken != null && studentsToken.Count > 1)
+                {
+                    var header = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                    var headerRow = studentsToken[0] as Newtonsoft.Json.Linq.JArray;
+                    if (headerRow != null)
+                    {
+                        for (int i = 0; i < headerRow.Count; i++)
+                        {
+                            var h = (headerRow[i]?.ToString() ?? "").Trim().ToLowerInvariant();
+                            if (!header.ContainsKey(h)) header[h] = i;
+                        }
+                    }
+
+                    int FindCol(params string[] names)
+                    {
+                        foreach (var n in names)
+                        {
+                            var key = n.Trim().ToLowerInvariant();
+                            if (header.ContainsKey(key)) return header[key];
+                        }
+                        return -1;
+                    }
+
+                    int idxStudentId = FindCol("student_id", "roll", "mã sv", "ma sv");
+                    int idxFullName = FindCol("full_name", "họ tên sinh viên bảo vệ", "họ tên", "ho ten sinh vien bao ve");
+                    int idxTitleVn = FindCol("vietnamese_title", "tên khóa luận (tiếng việt)", "ten khoa luan (tieng viet)");
+                    int idxTitleEn = FindCol("english_title", "tên khóa luận (tiếng anh)", "ten khoa luan (tieng anh)");
+                    int idxContent = FindCol("content_review", "nhận xét gv về nội dung khóa luận", "nhan xet gv ve noi dung khoa luan");
+                    int idxForm = FindCol("format_review", "nhận xét gv về hình thức khóa luận", "nhan xet gv ve hinh thuc khoa luan");
+                    int idxAttitude = FindCol("attitude_review", "nhận xét gv về thái độ sinh viên", "nhan xet gv ve thai do sinh vien");
+                    int idxAchievement = FindCol("achievement_level", "kết luận - mức độ đạt yêu cầu", "ket luan - muc do dat yeu cau");
+                    int idxLimitation = FindCol("limitation", "kết luận - hạn chế", "ket luan - han che");
+
+                    var firstDataRow = studentsToken[1] as Newtonsoft.Json.Linq.JArray;
+                    if (firstDataRow != null)
+                    {
+                        SetIfExists(commentObj, thesisCommentType, "TitleVN", GetTokenCell(firstDataRow, idxTitleVn));
+                        SetIfExists(commentObj, thesisCommentType, "TitleEN", GetTokenCell(firstDataRow, idxTitleEn));
+                        SetIfExists(commentObj, thesisCommentType, "Content", GetTokenCell(firstDataRow, idxContent));
+                        SetIfExists(commentObj, thesisCommentType, "Form", GetTokenCell(firstDataRow, idxForm));
+                        SetIfExists(commentObj, thesisCommentType, "Attitude", GetTokenCell(firstDataRow, idxAttitude));
+                        SetIfExists(commentObj, thesisCommentType, "Achievement", GetTokenCell(firstDataRow, idxAchievement));
+                        SetIfExists(commentObj, thesisCommentType, "Limitation", GetTokenCell(firstDataRow, idxLimitation));
+                    }
+
+                    for (int r = 1; r < studentsToken.Count; r++)
+                    {
+                        var row = studentsToken[r] as Newtonsoft.Json.Linq.JArray;
+                        if (row == null) continue;
+                        var sid = GetTokenCell(row, idxStudentId);
+                        var name = GetTokenCell(row, idxFullName);
+                        if (string.IsNullOrWhiteSpace(sid) && string.IsNullOrWhiteSpace(name)) continue;
+
+                        var sObj = Activator.CreateInstance(thesisStudentType);
+                        SetIfExists(sObj, thesisStudentType, "StudentId", sid);
+                        SetIfExists(sObj, thesisStudentType, "Roll", sid);
+                        SetIfExists(sObj, thesisStudentType, "FullName", name);
+                        SetIfExists(sObj, thesisStudentType, "Name", name);
+                        SetIfExists(sObj, thesisStudentType, "Agree_to_defense", "x");
+                        SetIfExists(sObj, thesisStudentType, "Revised_for_the_second_defense", "");
+                        SetIfExists(sObj, thesisStudentType, "Disagree_to_defense", "");
+                        SetIfExists(sObj, thesisStudentType, "Note", "");
+                        addMethod.Invoke(studentsListObj, new[] { sObj });
+                    }
+                }
+
+                var studentsProp = thesisCommentType.GetProperty("Conclusion") ?? thesisCommentType.GetProperty("Students") ?? thesisCommentType.GetProperty("ThesisStudents");
+                if (studentsProp != null && studentsProp.CanWrite)
+                {
+                    studentsProp.SetValue(commentObj, studentsListObj, null);
+                }
+
+#pragma warning disable SYSLIB0011
+                var formatter = new BinaryFormatter();
+                using (var fs = File.Create(outputCmtPath))
+                {
+                    formatter.Serialize(fs, commentObj);
+                }
+#pragma warning restore SYSLIB0011
+
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine("BuildCmt ERROR: " + ex.Message);
+                return 1;
+            }
+        }
+
+        static void SetIfExists(object obj, Type t, string propName, object value)
+        {
+            var p = t.GetProperty(propName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+            if (p == null || !p.CanWrite) return;
+            try { p.SetValue(obj, p.PropertyType == typeof(string) ? value?.ToString() : value, null); } catch { }
+        }
+
+        static string GetTokenCell(Newtonsoft.Json.Linq.JArray row, int idx)
+        {
+            try { if (idx < 0 || idx >= row.Count) return ""; var v = row[idx]; return v == null ? "" : v.ToString().Trim(); }
+            catch { return ""; }
         }
     }
 

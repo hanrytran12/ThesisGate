@@ -1,10 +1,32 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:gsheets/gsheets.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:http/http.dart' as http;
 import '../models/grade_models.dart';
 
 class ThesisSheetService {
+  Future<Map<String, dynamic>> importFromGoogleSheetUrl(String sheetUrl) async {
+    final baseUrl = dotenv.env['BACKEND_BASE_URL']?.trim().isNotEmpty == true
+        ? dotenv.env['BACKEND_BASE_URL']!.trim()
+        : 'http://127.0.0.1:8080';
+
+    final res = await http.post(
+      Uri.parse('$baseUrl/workflow/sheet/import'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'sheetUrl': sheetUrl, 'strictValidation': true}),
+    );
+
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    if (res.statusCode >= 400 || body['ok'] != true) {
+      final err = (body['error'] as Map<String, dynamic>?)?['message']?.toString() ?? res.body;
+      throw Exception(err);
+    }
+
+    return body;
+  }
+
   Future<String> createSheetFromClass({
     required SubjectClassResult selectedClass,
     required String semester,
