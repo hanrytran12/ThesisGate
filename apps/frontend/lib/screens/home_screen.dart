@@ -10,6 +10,7 @@
 import 'package:flutter/material.dart';
 import '../models/grade_models.dart';
 import '../services/fg_parser_service.dart';
+import '../services/thesis_sheet_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -21,12 +22,15 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   // ── State ──────────────────────────────────────────────────
   final _parserService = FgParserService();
+  final _sheetService = ThesisSheetService();
 
   FgOutput?           _fgData;
   SubjectClassResult? _selectedClass;
   String?             _fileName;
   bool                _isLoading = false;
   String?             _errorMessage;
+  bool                _isCreatingSheet = false;
+  String?             _lastSheetError;
 
   // Columns hiển thị — luôn có STT, Roll, Name, Comment + các Grade components
   List<String> get _gradeComponents {
@@ -82,6 +86,59 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  Future<void> _createThesisSheet() async {
+    if (_selectedClass == null || _fgData == null) return;
+
+    setState(() => _isCreatingSheet = true);
+
+    try {
+      final spreadsheetId = await _sheetService.createSheetFromClass(
+        selectedClass: _selectedClass!,
+        semester: _fgData!.semester,
+      );
+
+      if (!mounted) return;
+      setState(() => _lastSheetError = null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: const Color(0xFF238636),
+          content: Text('Đã tạo Google Sheet: https://docs.google.com/spreadsheets/d/$spreadsheetId'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      final msg = 'Tạo Google Sheet thất bại: $e';
+      setState(() => _lastSheetError = msg);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: const Color(0xFFDA3633),
+          content: Text(msg),
+          duration: const Duration(seconds: 6),
+        ),
+      );
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          backgroundColor: const Color(0xFF161B22),
+          title: const Text('Lỗi tạo Google Sheet', style: TextStyle(color: Colors.white)),
+          content: SingleChildScrollView(
+            child: SelectableText(msg, style: const TextStyle(color: Color(0xFFE6EDF3))),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Đóng'),
+            )
+          ],
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isCreatingSheet = false);
+      }
+    }
+  }
+
   // ── Build ──────────────────────────────────────────────────
 
   @override
@@ -92,6 +149,7 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           _buildTopBar(),
           if (_errorMessage != null) _buildErrorBanner(),
+          if (_lastSheetError != null) _buildSheetErrorBanner(),
           if (_fgData != null) ...[
             _buildInfoBar(),
             _buildClassSelector(),
@@ -166,6 +224,13 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
 
           if (_fgData != null) ...[
+            const SizedBox(width: 8),
+            _TopBarButton(
+              icon: Icons.table_chart_outlined,
+              label: _isCreatingSheet ? 'Đang tạo Sheet...' : 'Tạo Google Sheet',
+              color: const Color(0xFF1F6FEB),
+              onPressed: _isCreatingSheet ? null : _createThesisSheet,
+            ),
             const SizedBox(width: 8),
 
             // Nút Clear
@@ -434,6 +499,31 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: () => setState(() => _errorMessage = null),
             icon: const Icon(Icons.close, size: 16),
             color: const Color(0xFFF85149),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSheetErrorBanner() {
+    return Container(
+      color: const Color(0xFF5C3B00),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      child: Row(
+        children: [
+          const Icon(Icons.warning_amber_rounded,
+              color: Color(0xFFFFC107), size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: SelectableText(
+              _lastSheetError ?? 'Unknown Google Sheet error',
+              style: const TextStyle(color: Color(0xFFFFE082), fontSize: 12),
+            ),
+          ),
+          IconButton(
+            onPressed: () => setState(() => _lastSheetError = null),
+            icon: const Icon(Icons.close, size: 16),
+            color: const Color(0xFFFFC107),
           ),
         ],
       ),
