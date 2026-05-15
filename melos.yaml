@@ -15,7 +15,12 @@ scripts:
     run: dart run melos exec -c 1 --dir-exists="bin" --depends-on="shelf" -- "dart run bin/backend.dart"
     description: "Khởi chạy server Backend."
 
-  # Khởi chạy frontend
+  # Khởi chạy frontend (Windows Desktop — cần dart:io, Process.run)
   run:frontend:
+    run: dart run melos exec -c 1 --scope="frontend" -- "flutter run -d windows"
+    description: "Khởi chạy ứng dụng Frontend (Flutter Desktop trên Windows)."
+
+  # Chạy trên Chrome (không hỗ trợ dart:io / decoder.exe)
+  run:frontend:web:
     run: dart run melos exec -c 1 --scope="frontend" -- "flutter run -d chrome"
-    description: "Khởi chạy ứng dụng Frontend (Flutter trên Chrome)."
+    description: "Khởi chạy Frontend trên Chrome (chỉ dùng để test UI, không import .fg)."

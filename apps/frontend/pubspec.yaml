@@ -30,7 +30,11 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  file_picker: ^8.0.0 # Để mở hộp thoại chọn file trên Windows
+  excel: ^4.0.0       # Để đọc và xử lý dữ liệu Excel
+  path: ^1.9.0        # Xử lý đường dẫn file
   http: ^1.1.0
+  gsheets: ^0.5.0     # Google Sheets API
   shared_models:
     path: ../../packages/shared_models
 
