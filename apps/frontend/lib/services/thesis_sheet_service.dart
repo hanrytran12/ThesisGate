@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:gsheets/gsheets.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
+import 'package:googleapis/sheets/v4.dart' as sheets_api;
+import 'package:googleapis_auth/auth_io.dart';
 import '../models/grade_models.dart';
 
 class ThesisSheetService {
@@ -59,10 +61,10 @@ class ThesisSheetService {
     }
 
     final headers = <String>[
-      'Tên khóa luận (Tiếng Việt)',
-      'Tên khóa luận (Tiếng Anh)',
       'Roll',
       'Họ tên sinh viên bảo vệ',
+      'Tên khóa luận (Tiếng Việt)',
+      'Tên khóa luận (Tiếng Anh)',
       'Nhận xét GV về nội dung khóa luận',
       'Nhận xét GV về hình thức khóa luận',
       'Nhận xét GV về thái độ sinh viên',
@@ -74,10 +76,10 @@ class ThesisSheetService {
     await ws.values.insertRow(1, headers);
 
     final rows = selectedClass.students.map((s) => <String>[
-      '', // Title VN (chưa có trong FG)
-      '', // Title EN (chưa có trong FG)
       s.roll,
       s.name,
+      '', // Title VN (chưa có trong FG)
+      '', // Title EN (chưa có trong FG)
       _gradeByName(s, 'content_review'),
       _gradeByName(s, 'format_review'),
       _gradeByName(s, 'attitude_review'),
@@ -87,6 +89,128 @@ class ThesisSheetService {
 
     for (var i = 0; i < rows.length; i++) {
       await ws.values.insertRow(i + 2, rows[i]);
+    }
+
+    // Tự động Merge Cells cho các cột chung của nhóm
+    if (selectedClass.students.length > 1) {
+      try {
+        final credentials = ServiceAccountCredentials.fromJson(serviceAccountJson);
+        final client = await clientViaServiceAccount(credentials, [sheets_api.SheetsApi.spreadsheetsScope]);
+        final sheetsApi = sheets_api.SheetsApi(client);
+
+        final borderStyle = sheets_api.Border(style: 'SOLID', color: sheets_api.Color(red: 0.0, green: 0.0, blue: 0.0));
+        
+        final request = sheets_api.BatchUpdateSpreadsheetRequest(
+          requests: [
+            // 1. Merge các cột nhận xét
+            sheets_api.Request(
+              mergeCells: sheets_api.MergeCellsRequest(
+                mergeType: 'MERGE_COLUMNS',
+                range: sheets_api.GridRange(
+                  sheetId: ws.id,
+                  startRowIndex: 1,
+                  endRowIndex: 1 + selectedClass.students.length,
+                  startColumnIndex: 2,
+                  endColumnIndex: 9,
+                ),
+              ),
+            ),
+            // 2. Format Header (Dòng 1): Nền xanh, chữ trắng, in đậm, căn giữa
+            sheets_api.Request(
+              repeatCell: sheets_api.RepeatCellRequest(
+                range: sheets_api.GridRange(
+                  sheetId: ws.id,
+                  startRowIndex: 0,
+                  endRowIndex: 1,
+                  startColumnIndex: 0,
+                  endColumnIndex: 9,
+                ),
+                cell: sheets_api.CellData(
+                  userEnteredFormat: sheets_api.CellFormat(
+                    backgroundColor: sheets_api.Color(red: 0.2, green: 0.4, blue: 0.8), // Màu xanh dương dương
+                    textFormat: sheets_api.TextFormat(
+                      bold: true,
+                      foregroundColor: sheets_api.Color(red: 1.0, green: 1.0, blue: 1.0), // Chữ trắng
+                    ),
+                    horizontalAlignment: 'CENTER',
+                    verticalAlignment: 'MIDDLE',
+                    wrapStrategy: 'WRAP',
+                  ),
+                ),
+                fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy)',
+              ),
+            ),
+            // 3. Format Data (Dòng 2 trở đi): Wrap text, căn lên trên cùng
+            sheets_api.Request(
+              repeatCell: sheets_api.RepeatCellRequest(
+                range: sheets_api.GridRange(
+                  sheetId: ws.id,
+                  startRowIndex: 1,
+                  endRowIndex: 1 + selectedClass.students.length,
+                  startColumnIndex: 0,
+                  endColumnIndex: 9,
+                ),
+                cell: sheets_api.CellData(
+                  userEnteredFormat: sheets_api.CellFormat(
+                    verticalAlignment: 'TOP',
+                    wrapStrategy: 'WRAP',
+                  ),
+                ),
+                fields: 'userEnteredFormat(verticalAlignment,wrapStrategy)',
+              ),
+            ),
+            // 4. Viền (Borders) cho toàn bộ bảng
+            sheets_api.Request(
+              updateBorders: sheets_api.UpdateBordersRequest(
+                range: sheets_api.GridRange(
+                  sheetId: ws.id,
+                  startRowIndex: 0,
+                  endRowIndex: 1 + selectedClass.students.length,
+                  startColumnIndex: 0,
+                  endColumnIndex: 9,
+                ),
+                top: borderStyle,
+                bottom: borderStyle,
+                left: borderStyle,
+                right: borderStyle,
+                innerHorizontal: borderStyle,
+                innerVertical: borderStyle,
+              ),
+            ),
+            // 5. Chỉnh độ rộng cột cho Roll và Tên
+            sheets_api.Request(
+              updateDimensionProperties: sheets_api.UpdateDimensionPropertiesRequest(
+                range: sheets_api.DimensionRange(
+                  sheetId: ws.id,
+                  dimension: 'COLUMNS',
+                  startIndex: 0,
+                  endIndex: 2,
+                ),
+                properties: sheets_api.DimensionProperties(pixelSize: 150),
+                fields: 'pixelSize',
+              ),
+            ),
+            // 6. Chỉnh độ rộng cột cho các cột Nhận xét (Rộng hơn để dễ đọc)
+            sheets_api.Request(
+              updateDimensionProperties: sheets_api.UpdateDimensionPropertiesRequest(
+                range: sheets_api.DimensionRange(
+                  sheetId: ws.id,
+                  dimension: 'COLUMNS',
+                  startIndex: 2,
+                  endIndex: 9,
+                ),
+                properties: sheets_api.DimensionProperties(pixelSize: 300),
+                fields: 'pixelSize',
+              ),
+            ),
+          ],
+        );
+
+        await sheetsApi.spreadsheets.batchUpdate(request, spreadsheetId);
+        client.close();
+      } catch (e) {
+        print('Không thể merge cells: $e');
+      }
     }
 
     return ss.id;
