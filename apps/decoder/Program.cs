@@ -383,7 +383,12 @@ namespace FgDecoder
                 var fuGradePath = Path.Combine(baseDir, "FuGrade.dll");
                 if (!File.Exists(fuGradePath))
                 {
-                    Console.Error.WriteLine("BuildCmt ERROR: Missing FuGrade.dll near decoder.exe");
+                    fuGradePath = Path.Combine(baseDir, "libs", "FuGrade.dll");
+                }
+
+                if (!File.Exists(fuGradePath))
+                {
+                    Console.Error.WriteLine("BuildCmt ERROR: Missing FuGrade.dll near decoder.exe (Vui lòng copy file FuGrade.dll vào thư mục libs hoặc bin)");
                     return 1;
                 }
 
@@ -464,7 +469,9 @@ namespace FgDecoder
                         if (row == null) continue;
                         var sid = GetTokenCell(row, idxStudentId);
                         var name = GetTokenCell(row, idxFullName);
-                        if (string.IsNullOrWhiteSpace(sid) && string.IsNullOrWhiteSpace(name)) continue;
+                        
+                        // Validate: Bỏ qua nếu thiếu Mã SV hoặc thiếu Họ Tên
+                        if (string.IsNullOrWhiteSpace(sid) || string.IsNullOrWhiteSpace(name)) continue;
 
                         var sObj = Activator.CreateInstance(thesisStudentType);
                         SetIfExists(sObj, thesisStudentType, "StudentId", sid);

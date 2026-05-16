@@ -34,6 +34,7 @@ dependencies:
   excel: ^4.0.0       # Để đọc và xử lý dữ liệu Excel
   path: ^1.9.0        # Xử lý đường dẫn file
   http: ^1.1.0
+  url_launcher: ^6.3.0
   gsheets: ^0.5.0     # Google Sheets API
   flutter_dotenv: ^5.1.0
   shared_models:
@@ -42,6 +43,8 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
+  googleapis: ^11.4.0
+  googleapis_auth: ^1.6.0
 
 dev_dependencies:
   flutter_test:
