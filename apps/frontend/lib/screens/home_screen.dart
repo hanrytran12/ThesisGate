@@ -92,44 +92,127 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _showImportSheetDialog() async {
+    final selectedTabs = <String>{};
+    List<String> tabs = [];
+    String? error;
+    bool loadingTabs = false;
+
     await showDialog<void>(
       context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF161B22),
-        title: const Text('Import Google Sheet -> Tạo CMT', style: TextStyle(color: Colors.white)),
-        content: TextField(
-          controller: _sheetUrlController,
-          style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
-            hintText: 'Dán link Google Sheet...',
-            hintStyle: TextStyle(color: Color(0xFF8B949E)),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          backgroundColor: const Color(0xFF161B22),
+          title: const Text('Import Google Sheet -> Tạo CMT', style: TextStyle(color: Colors.white)),
+          content: SizedBox(
+            width: 560,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: _sheetUrlController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    hintText: 'Dán link Google Sheet...',
+                    hintStyle: TextStyle(color: Color(0xFF8B949E)),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    ElevatedButton(
+                      onPressed: loadingTabs
+                          ? null
+                          : () async {
+                              final url = _sheetUrlController.text.trim();
+                              if (url.isEmpty) return;
+                              setLocal(() {
+                                loadingTabs = true;
+                                error = null;
+                                tabs = [];
+                                selectedTabs.clear();
+                              });
+                              try {
+                                final found = await _sheetService.listImportTabs(url);
+                                setLocal(() {
+                                  tabs = found;
+                                  selectedTabs.addAll(found);
+                                });
+                              } catch (e) {
+                                setLocal(() => error = e.toString());
+                              } finally {
+                                setLocal(() => loadingTabs = false);
+                              }
+                            },
+                      child: Text(loadingTabs ? 'Đang tải tab...' : 'Kiểm tra tab'),
+                    ),
+                  ],
+                ),
+                if (error != null) ...[
+                  const SizedBox(height: 8),
+                  Text(error!, style: const TextStyle(color: Color(0xFFDA3633))),
+                ],
+                if (tabs.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  const Text('Chọn tab export .cmt:', style: TextStyle(color: Colors.white70)),
+                  const SizedBox(height: 6),
+                  Container(
+                    constraints: const BoxConstraints(maxHeight: 220),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        children: tabs
+                            .map(
+                              (t) => CheckboxListTile(
+                                value: selectedTabs.contains(t),
+                                onChanged: (v) {
+                                  setLocal(() {
+                                    if (v == true) {
+                                      selectedTabs.add(t);
+                                    } else {
+                                      selectedTabs.remove(t);
+                                    }
+                                  });
+                                },
+                                title: Text(t, style: const TextStyle(color: Colors.white)),
+                                controlAffinity: ListTileControlAffinity.trailing,
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Huỷ')),
+            TextButton(
+              onPressed: _isImportingSheet || selectedTabs.isEmpty
+                  ? null
+                  : () async {
+                      final url = _sheetUrlController.text.trim();
+                      final selected = selectedTabs.toList();
+                      Navigator.of(ctx).pop();
+                      await _importSheetToCmt(url, selected);
+                    },
+              child: const Text('Tạo CMT'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Huỷ')),
-          TextButton(
-            onPressed: _isImportingSheet ? null : () async {
-              final url = _sheetUrlController.text.trim();
-              if (url.isEmpty) return;
-              Navigator.of(context).pop();
-              await _importSheetToCmt(url);
-            },
-            child: const Text('Tạo CMT'),
-          ),
-        ],
       ),
     );
   }
 
-  Future<void> _importSheetToCmt(String sheetUrl) async {
+  Future<void> _importSheetToCmt(String sheetUrl, List<String> selectedTabs) async {
     setState(() => _isImportingSheet = true);
     try {
-      final result = await _sheetService.importFromGoogleSheetUrl(sheetUrl);
+      final result = await _sheetService.importFromGoogleSheetUrl(sheetUrl, sheetNames: selectedTabs);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           backgroundColor: const Color(0xFF238636),
-          content: Text('Tạo CMT thành công: ${result['cmtFilePath'] ?? '(không rõ đường dẫn)'}'),
+          content: Text('Tạo CMT: success=${result['successCount']}, failed=${result['failedCount']}'),
           duration: const Duration(seconds: 6),
         ),
       );

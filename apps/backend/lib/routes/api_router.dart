@@ -10,6 +10,7 @@ class ApiRouter {
 
     // Định nghĩa các endpoints tại đây
     router.post('/workflow/sheet/validate', _sheetWorkflowController.validateSheet);
+    router.post('/workflow/sheet/import/tabs', _sheetWorkflowController.listImportTabs);
     router.post('/workflow/sheet/import', _sheetWorkflowController.importSheet);
 
     return router;

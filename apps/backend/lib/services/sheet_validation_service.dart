@@ -167,7 +167,7 @@ class SheetValidationService {
     return (response.values ?? []).map((row) => row.toList()).toList();
   }
 
-  Future<Map<String, dynamic>> importFromUrl(String sheetUrl) async {
+  Future<List<String>> getSepTabsFromUrl(String sheetUrl) async {
     final parsed = parseSheetUrl(sheetUrl);
     final sheetsApi = await _buildSheetsApi();
 
@@ -177,56 +177,85 @@ class SheetValidationService {
         .whereType<String>()
         .toList();
 
-    final sepSheetName = allNames.firstWhere(
-      (name) => RegExp(r'^SEP490_[^_]+_.+', caseSensitive: false).hasMatch(name),
-      orElse: () => '',
-    );
+    return allNames
+        .where((name) => RegExp(r'^SEP490_[^_]+_.+', caseSensitive: false).hasMatch(name))
+        .toList();
+  }
 
-    if (sepSheetName.isEmpty) {
+  Future<Map<String, dynamic>> importFromUrl(String sheetUrl, {List<String>? sheetNames}) async {
+    final parsed = parseSheetUrl(sheetUrl);
+    final sheetsApi = await _buildSheetsApi();
+
+    final matchedSepSheets = await getSepTabsFromUrl(sheetUrl);
+
+    final targetSheets = (sheetNames != null && sheetNames.isNotEmpty)
+        ? matchedSepSheets.where((s) => sheetNames.any((x) => x.toLowerCase() == s.toLowerCase())).toList()
+        : matchedSepSheets;
+
+    if (targetSheets.isEmpty) {
       return {
         'ok': false,
         'error': {
           'code': 'SHEET_NOT_FOUND',
-          'message': 'Không tìm thấy sheet dạng SEP490_<ma_lop>_... để import.',
+          'message': sheetNames != null && sheetNames.isNotEmpty
+              ? 'Không tìm thấy tab SEP490_* khớp với sheetNames yêu cầu.'
+              : 'Không tìm thấy sheet dạng SEP490_<ma_lop>_... để import.',
         },
       };
     }
-
-    final sepRows = await _readSheetValues(sheetsApi, parsed.spreadsheetId, sepSheetName);
-
-    final payload = {
-      'spreadsheetId': parsed.spreadsheetId,
-      'sheetName': sepSheetName,
-      'students': sepRows,
-    };
 
     final outputsDir = Directory(p.join(Directory.current.path, 'outputs', 'cmt'));
     if (!outputsDir.existsSync()) {
       outputsDir.createSync(recursive: true);
     }
 
-    final ts = DateTime.now().millisecondsSinceEpoch;
-    final inputJsonPath = p.join(outputsDir.path, 'sheet_import_$ts.build.json');
-    final outputCmtPath = p.join(outputsDir.path, 'sheet_import_$ts.cmt');
-
-    await File(inputJsonPath).writeAsString(jsonEncode(payload));
-
     final decoderPath = _resolveDecoderPath();
-    final result = await Process.run(
-      decoderPath,
-      ['--build-cmt', inputJsonPath, outputCmtPath],
-      runInShell: false,
-    );
+    final results = <Map<String, dynamic>>[];
 
-    if (result.exitCode != 0) {
-      throw StateError('Build .cmt thất bại (exit=${result.exitCode}). ${result.stderr}');
+    for (final sepSheetName in targetSheets) {
+      final sepRows = await _readSheetValues(sheetsApi, parsed.spreadsheetId, sepSheetName);
+      final payload = {
+        'spreadsheetId': parsed.spreadsheetId,
+        'sheetName': sepSheetName,
+        'students': sepRows,
+      };
+
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      final safeSheet = sepSheetName.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+      final inputJsonPath = p.join(outputsDir.path, 'sheet_import_${safeSheet}_$ts.build.json');
+      final outputCmtPath = p.join(outputsDir.path, 'sheet_import_${safeSheet}_$ts.cmt');
+
+      await File(inputJsonPath).writeAsString(jsonEncode(payload));
+
+      final result = await Process.run(
+        decoderPath,
+        ['--build-cmt', inputJsonPath, outputCmtPath],
+        runInShell: false,
+      );
+
+      if (result.exitCode != 0) {
+        results.add({
+          'ok': false,
+          'sheetName': sepSheetName,
+          'error': result.stderr.toString().trim(),
+        });
+        continue;
+      }
+
+      results.add({
+        'ok': true,
+        'sheetName': sepSheetName,
+        'cmtFilePath': outputCmtPath,
+      });
     }
 
     return {
-      'ok': true,
+      'ok': results.any((r) => r['ok'] == true),
       'spreadsheetId': parsed.spreadsheetId,
-      'sheetName': sepSheetName,
-      'cmtFilePath': outputCmtPath,
+      'totalSheets': targetSheets.length,
+      'successCount': results.where((r) => r['ok'] == true).length,
+      'failedCount': results.where((r) => r['ok'] != true).length,
+      'results': results,
     };
   }
 
