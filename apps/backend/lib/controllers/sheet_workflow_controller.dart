@@ -70,7 +70,12 @@ class SheetWorkflowController {
         );
       }
 
-      final result = await _service.importFromUrl(sheetUrl);
+      final rawSheetNames = payload['sheetNames'];
+      final sheetNames = rawSheetNames is List
+          ? rawSheetNames.map((e) => e.toString().trim()).where((e) => e.isNotEmpty).toList()
+          : null;
+
+      final result = await _service.importFromUrl(sheetUrl, sheetNames: sheetNames);
       return _json(200, result);
     } on FormatException catch (e) {
       return _json(
