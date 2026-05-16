@@ -36,6 +36,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String?             _lastSheetError;
   String?             _lastSheetUrl;
   final TextEditingController _sheetUrlController = TextEditingController();
+  final TextEditingController _sheetNamesController = TextEditingController();
 
   // Columns hiển thị — luôn có STT, Roll, Name, Comment + các Grade components
   List<String> get _gradeComponents {
@@ -97,12 +98,29 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (_) => AlertDialog(
         backgroundColor: const Color(0xFF161B22),
         title: const Text('Import Google Sheet -> Tạo CMT', style: TextStyle(color: Colors.white)),
-        content: TextField(
-          controller: _sheetUrlController,
-          style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
-            hintText: 'Dán link Google Sheet...',
-            hintStyle: TextStyle(color: Color(0xFF8B949E)),
+        content: SizedBox(
+          width: 520,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: _sheetUrlController,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  hintText: 'Dán link Google Sheet...',
+                  hintStyle: TextStyle(color: Color(0xFF8B949E)),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _sheetNamesController,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  hintText: 'Tab cần export (tuỳ chọn, ngăn cách dấu phẩy)',
+                  hintStyle: TextStyle(color: Color(0xFF8B949E)),
+                ),
+              ),
+            ],
           ),
         ),
         actions: [
@@ -111,8 +129,13 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: _isImportingSheet ? null : () async {
               final url = _sheetUrlController.text.trim();
               if (url.isEmpty) return;
+              final names = _sheetNamesController.text
+                  .split(',')
+                  .map((e) => e.trim())
+                  .where((e) => e.isNotEmpty)
+                  .toList();
               Navigator.of(context).pop();
-              await _importSheetToCmt(url);
+              await _importSheetToCmt(url, sheetNames: names);
             },
             child: const Text('Tạo CMT'),
           ),
@@ -121,16 +144,29 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<void> _importSheetToCmt(String sheetUrl) async {
+  Future<void> _importSheetToCmt(String sheetUrl, {List<String>? sheetNames}) async {
     setState(() => _isImportingSheet = true);
     try {
-      final result = await _sheetService.importFromGoogleSheetUrl(sheetUrl);
+      final result = await _sheetService.importFromGoogleSheetUrl(sheetUrl, sheetNames: sheetNames);
       if (!mounted) return;
+      final successCount = result['successCount'];
+      final failedCount = result['failedCount'];
+      final results = (result['results'] as List?) ?? const [];
+      final msg = StringBuffer('Tạo CMT xong: success=$successCount, failed=$failedCount');
+      for (final r in results) {
+        final m = r as Map<String, dynamic>;
+        if (m['ok'] == true) {
+          msg.write('\n✅ ${m['sheetName']} -> ${m['cmtFilePath']}');
+        } else {
+          msg.write('\n❌ ${m['sheetName']} -> ${m['error']}');
+        }
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           backgroundColor: const Color(0xFF238636),
-          content: Text('Tạo CMT thành công: ${result['cmtFilePath'] ?? '(không rõ đường dẫn)'}'),
-          duration: const Duration(seconds: 6),
+          content: Text(msg.toString()),
+          duration: const Duration(seconds: 10),
         ),
       );
     } catch (e) {
