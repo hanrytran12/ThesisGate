@@ -8,6 +8,8 @@
 // ============================================================
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/grade_models.dart';
 import '../services/fg_parser_service.dart';
 import '../services/thesis_sheet_service.dart';
@@ -32,6 +34,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool                _isCreatingSheet = false;
   bool                _isImportingSheet = false;
   String?             _lastSheetError;
+  String?             _lastSheetUrl;
   final TextEditingController _sheetUrlController = TextEditingController();
 
   // Columns hiển thị — luôn có STT, Roll, Name, Comment + các Grade components
@@ -156,24 +159,16 @@ class _HomeScreenState extends State<HomeScreen> {
       );
 
       if (!mounted) return;
-      setState(() => _lastSheetError = null);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: const Color(0xFF238636),
-          content: Text('Đã tạo Google Sheet: https://docs.google.com/spreadsheets/d/$spreadsheetId'),
-        ),
-      );
+      final sheetUrl = 'https://docs.google.com/spreadsheets/d/$spreadsheetId';
+      setState(() {
+        _lastSheetError = null;
+        _lastSheetUrl = sheetUrl;
+      });
+      await _showSheetSuccessDialog(sheetUrl);
     } catch (e) {
       if (!mounted) return;
       final msg = 'Tạo Google Sheet thất bại: $e';
       setState(() => _lastSheetError = msg);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: const Color(0xFFDA3633),
-          content: Text(msg),
-          duration: const Duration(seconds: 6),
-        ),
-      );
       await showDialog<void>(
         context: context,
         builder: (_) => AlertDialog(
@@ -195,6 +190,136 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() => _isCreatingSheet = false);
       }
     }
+  }
+
+  Future<void> _showSheetSuccessDialog(String sheetUrl) async {
+    bool copied = false;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          backgroundColor: const Color(0xFF161B22),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(color: Color(0xFF238636), width: 1),
+          ),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF238636).withAlpha(40),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.check_circle_outline,
+                    color: Color(0xFF3FB950), size: 22),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Google Sheet đã tạo xong!',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 520,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Dán link này vào Google Sheets:',
+                  style: TextStyle(color: Color(0xFF8B949E), fontSize: 13),
+                ),
+                const SizedBox(height: 10),
+                // Link box
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0D1117),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFF30363D)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.link,
+                          size: 16, color: Color(0xFF2188FF)),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: SelectableText(
+                          sheetUrl,
+                          style: const TextStyle(
+                            color: Color(0xFF79C0FF),
+                            fontSize: 13,
+                            fontFamily: 'monospace',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                // Copy button (full width)
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+                      await Clipboard.setData(
+                          ClipboardData(text: sheetUrl));
+                      setLocal(() => copied = true);
+                    },
+                    icon: Icon(
+                      copied
+                          ? Icons.check_rounded
+                          : Icons.copy_rounded,
+                      size: 16,
+                    ),
+                    label: Text(copied ? 'Đã copy!' : 'Copy link'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: copied
+                          ? const Color(0xFF238636)
+                          : const Color(0xFF21262D),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Đóng',
+                  style: TextStyle(color: Color(0xFF8B949E))),
+            ),
+            ElevatedButton.icon(
+              onPressed: () async {
+                final uri = Uri.parse(sheetUrl);
+                if (await canLaunchUrl(uri)) {
+                  await launchUrl(uri,
+                      mode: LaunchMode.externalApplication);
+                }
+              },
+              icon: const Icon(Icons.open_in_browser, size: 16),
+              label: const Text('Mở trong trình duyệt'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF1F6FEB),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   // ── Build ──────────────────────────────────────────────────
