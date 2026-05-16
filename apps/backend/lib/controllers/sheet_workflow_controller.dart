@@ -1,11 +1,15 @@
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:path/path.dart' as p;
 import 'package:shelf/shelf.dart';
 
+import '../services/ai_evaluation_service.dart';
 import '../services/sheet_validation_service.dart';
 
 class SheetWorkflowController {
   final SheetValidationService _service = SheetValidationService();
+  final AiEvaluationService _aiService = AiEvaluationService();
 
   Future<Response> validateSheet(Request request) async {
     try {
@@ -121,6 +125,40 @@ class SheetWorkflowController {
           },
         },
       );
+    }
+  }
+
+  Future<Response> evaluateCmt(Request request) async {
+    try {
+      final payload = jsonDecode(await request.readAsString()) as Map<String, dynamic>;
+      final cmtJsonPath = (payload['cmtJsonPath'] as String?)?.trim() ?? '';
+
+      if (cmtJsonPath.isEmpty) {
+        return _json(400, {
+          'ok': false,
+          'error': {'code': 'INVALID_INPUT', 'message': 'cmtJsonPath là bắt buộc'},
+        });
+      }
+
+      // Security: only allow paths within outputs/cmt/
+      final outputsDir = p.normalize(p.join(Directory.current.path, 'outputs', 'cmt'));
+      final resolvedPath = p.normalize(
+        p.isAbsolute(cmtJsonPath) ? cmtJsonPath : p.join(outputsDir, cmtJsonPath),
+      );
+      if (!p.isWithin(outputsDir, resolvedPath)) {
+        return _json(403, {
+          'ok': false,
+          'error': {'code': 'FORBIDDEN', 'message': 'Đường dẫn file không hợp lệ'},
+        });
+      }
+
+      final result = await _aiService.evaluateFile(resolvedPath);
+      return _json(200, result);
+    } catch (e) {
+      return _json(500, {
+        'ok': false,
+        'error': {'code': 'EVALUATE_FAILED', 'message': e.toString()},
+      });
     }
   }
 

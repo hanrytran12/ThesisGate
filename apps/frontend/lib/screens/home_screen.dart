@@ -7,6 +7,8 @@
 //   • Nút Export (Phase 4 & 5)
 // ============================================================
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -35,6 +37,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool                _isImportingSheet = false;
   String?             _lastSheetError;
   String?             _lastSheetUrl;
+  bool                _isEvaluating = false;
+  final List<String>  _cmtJsonPaths = [];
   final TextEditingController _sheetUrlController = TextEditingController();
 
   // Columns hiển thị — luôn có STT, Roll, Name, Comment + các Grade components
@@ -88,6 +92,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _selectedClass = null;
       _fileName      = null;
       _errorMessage  = null;
+      _cmtJsonPaths.clear();
     });
   }
 
@@ -209,6 +214,23 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final result = await _sheetService.importFromGoogleSheetUrl(sheetUrl, sheetNames: selectedTabs);
       if (!mounted) return;
+
+      // Accumulate cmtJsonPath values from all successful results
+      final results = (result['results'] as List?) ?? [];
+      final newPaths = results
+          .whereType<Map<String, dynamic>>()
+          .where((r) => r['ok'] == true)
+          .map((r) => r['cmtJsonPath'] as String?)
+          .whereType<String>()
+          .toList();
+      if (newPaths.isNotEmpty) {
+        setState(() {
+          for (final path in newPaths) {
+            if (!_cmtJsonPaths.contains(path)) _cmtJsonPaths.add(path);
+          }
+        });
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           backgroundColor: const Color(0xFF238636),
@@ -228,6 +250,203 @@ class _HomeScreenState extends State<HomeScreen> {
     } finally {
       if (mounted) setState(() => _isImportingSheet = false);
     }
+  }
+
+  Future<void> _evaluateWithAi() async {
+    if (_cmtJsonPaths.isEmpty) return;
+
+    String? pathToEvaluate;
+    if (_cmtJsonPaths.length == 1) {
+      pathToEvaluate = _cmtJsonPaths.first;
+    } else {
+      pathToEvaluate = await _showCmtPickerDialog();
+      if (pathToEvaluate == null) return;
+    }
+
+    final fileName = pathToEvaluate.replaceAll('\\', '/').split('/').last;
+    final elapsed = ValueNotifier<int>(0);
+    final timer = Timer.periodic(const Duration(seconds: 1), (_) => elapsed.value++);
+
+    setState(() => _isEvaluating = true);
+
+    // Show non-dismissible progress dialog with live elapsed timer
+    if (!mounted) return;
+    // ignore: unawaited_futures
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _EvaluatingDialog(fileName: fileName, elapsed: elapsed),
+    );
+
+    try {
+      final result = await _sheetService.evaluateCmtWithAi(pathToEvaluate);
+      if (!mounted) return;
+      Navigator.of(context).pop(); // close progress dialog
+      await _showAiEvalResultDialog(result);
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.of(context).pop(); // close progress dialog
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: const Color(0xFFDA3633),
+          content: Text('Đánh giá AI thất bại: $e'),
+          duration: const Duration(seconds: 10),
+        ),
+      );
+    } finally {
+      timer.cancel();
+      elapsed.dispose();
+      if (mounted) setState(() => _isEvaluating = false);
+    }
+  }
+
+  Future<String?> _showCmtPickerDialog() async {
+    String? selected;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF161B22),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: const BorderSide(color: Color(0xFF6E40C9), width: 1),
+        ),
+        title: Row(children: [
+          const Icon(Icons.psychology_outlined, color: Color(0xFF8957E5), size: 22),
+          const SizedBox(width: 10),
+          const Text(
+            'Chọn file CMT để đánh giá',
+            style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+          ),
+        ]),
+        content: SizedBox(
+          width: 580,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Có ${_cmtJsonPaths.length} file .cmt.json đã được tạo. Chọn file cần đánh giá:',
+                style: const TextStyle(color: Color(0xFF8B949E), fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                constraints: const BoxConstraints(maxHeight: 300),
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: _cmtJsonPaths.map((path) {
+                      final displayName = path.replaceAll('\\', '/').split('/').last;
+                      return InkWell(
+                        onTap: () {
+                          selected = path;
+                          Navigator.of(ctx).pop();
+                        },
+                        borderRadius: BorderRadius.circular(6),
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0D1117),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFF30363D)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.description_outlined,
+                                  color: Color(0xFF8957E5), size: 18),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      displayName,
+                                      style: const TextStyle(
+                                          color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      path,
+                                      style: const TextStyle(
+                                          color: Color(0xFF8B949E), fontSize: 11, fontFamily: 'monospace'),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Icon(Icons.chevron_right, color: Color(0xFF8B949E), size: 18),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Huỷ', style: TextStyle(color: Color(0xFF8B949E))),
+          ),
+        ],
+      ),
+    );
+    return selected;
+  }
+
+  Future<void> _showAiEvalResultDialog(Map<String, dynamic> result) async {
+    final items = ((result['results'] as List?) ?? [])
+        .whereType<Map<String, dynamic>>()
+        .toList();
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF161B22),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: const BorderSide(color: Color(0xFF8957E5), width: 1),
+        ),
+        title: Row(children: [
+          const Icon(Icons.psychology_outlined, color: Color(0xFF8957E5), size: 22),
+          const SizedBox(width: 10),
+          Text(
+            'Kết quả đánh giá AI (${items.length} sinh viên)',
+            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+          ),
+        ]),
+        content: SizedBox(
+          width: 600,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Thành công: ${result['successCount']}  |  Lỗi: ${result['failedCount']}',
+                style: const TextStyle(color: Color(0xFF8B949E), fontSize: 13),
+              ),
+              const SizedBox(height: 10),
+              Container(
+                constraints: const BoxConstraints(maxHeight: 360),
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: items.map((item) => _AiResultRow(item: item)).toList(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Đóng', style: TextStyle(color: Color(0xFF8B949E))),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _createThesisSheet() async {
@@ -504,6 +723,15 @@ class _HomeScreenState extends State<HomeScreen> {
               color: const Color(0xFF8957E5),
               onPressed: _isImportingSheet ? null : _showImportSheetDialog,
             ),
+            if (_cmtJsonPaths.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              _TopBarButton(
+                icon: Icons.psychology_outlined,
+                label: _isEvaluating ? 'Đang đánh giá...' : 'Đánh giá với AI',
+                color: const Color(0xFF6E40C9),
+                onPressed: _isEvaluating ? null : _evaluateWithAi,
+              ),
+            ],
             const SizedBox(width: 8),
 
             // Nút Clear
@@ -931,6 +1159,179 @@ class _GradeCell extends StatelessWidget {
   }
 }
 
+
+class _AiResultRow extends StatelessWidget {
+  final Map<String, dynamic> item;
+  const _AiResultRow({required this.item});
+
+  Color get _decisionColor {
+    if (item['ok'] != true) return const Color(0xFFF85149);
+    switch (item['decision'] as String? ?? '') {
+      case 'agree_to_defense':
+        return const Color(0xFF3FB950);
+      case 'revised_for_the_second_defense':
+        return const Color(0xFFD29922);
+      case 'disagree_to_defend':
+        return const Color(0xFFF85149);
+      default:
+        return const Color(0xFF8B949E);
+    }
+  }
+
+  String get _decisionLabel {
+    if (item['ok'] != true) return 'Lỗi';
+    switch (item['decision'] as String? ?? '') {
+      case 'agree_to_defense':
+        return 'Đồng ý bảo vệ';
+      case 'revised_for_the_second_defense':
+        return 'Bảo vệ lần 2';
+      case 'disagree_to_defend':
+        return 'Không đủ điều kiện';
+      default:
+        return item['decision'] as String? ?? '?';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0D1117),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: const Color(0xFF30363D)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1F2D3D),
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: const Color(0xFF2188FF).withAlpha(102)),
+            ),
+            child: Text(
+              item['roll'] as String? ?? '?',
+              style: const TextStyle(
+                color: Color(0xFF79C0FF),
+                fontFamily: 'monospace',
+                fontSize: 12,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: _decisionColor.withAlpha(38),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: _decisionColor.withAlpha(102)),
+                  ),
+                  child: Text(
+                    _decisionLabel,
+                    style: TextStyle(
+                      color: _decisionColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                if (item['ok'] != true) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    item['error'] as String? ?? '',
+                    style: const TextStyle(color: Color(0xFFF85149), fontSize: 12),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EvaluatingDialog extends StatelessWidget {
+  final String fileName;
+  final ValueNotifier<int> elapsed;
+
+  const _EvaluatingDialog({required this.fileName, required this.elapsed});
+
+  String _fmt(int secs) {
+    final m = secs ~/ 60;
+    final s = secs % 60;
+    return m > 0 ? '${m}m ${s.toString().padLeft(2, '0')}s' : '${s}s';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: const Color(0xFF161B22),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: Color(0xFF6E40C9), width: 1),
+      ),
+      content: SizedBox(
+        width: 400,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            const SizedBox(
+              width: 48,
+              height: 48,
+              child: CircularProgressIndicator(
+                color: Color(0xFF8957E5),
+                strokeWidth: 3,
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'AI đang phân tích khóa luận...',
+              style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              fileName,
+              style: const TextStyle(
+                color: Color(0xFF8B949E),
+                fontSize: 11,
+                fontFamily: 'monospace',
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ValueListenableBuilder<int>(
+              valueListenable: elapsed,
+              builder: (_, secs, child) => Text(
+                'Đã chờ: ${_fmt(secs)}',
+                style: const TextStyle(
+                  color: Color(0xFF8957E5),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Ollama đang chạy mô hình AI cho từng sinh viên.\nQuá trình này có thể mất vài phút.',
+              style: TextStyle(color: Color(0xFF8B949E), fontSize: 12, height: 1.5),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _LoadingWidget extends StatelessWidget {
   const _LoadingWidget();
