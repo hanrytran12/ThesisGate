@@ -52,6 +52,28 @@ class SheetWorkflowController {
     }
   }
 
+  Future<Response> listImportTabs(Request request) async {
+    try {
+      final payload = jsonDecode(await request.readAsString()) as Map<String, dynamic>;
+      final sheetUrl = (payload['sheetUrl'] as String?)?.trim() ?? '';
+
+      if (sheetUrl.isEmpty) {
+        return _json(400, {
+          'ok': false,
+          'error': {'code': 'INVALID_INPUT', 'message': 'sheetUrl là bắt buộc'}
+        });
+      }
+
+      final tabs = await _service.getSepTabsFromUrl(sheetUrl);
+      return _json(200, {'ok': true, 'tabs': tabs});
+    } catch (e) {
+      return _json(500, {
+        'ok': false,
+        'error': {'code': 'LIST_TABS_FAILED', 'message': e.toString()}
+      });
+    }
+  }
+
   Future<Response> importSheet(Request request) async {
     try {
       final payload = jsonDecode(await request.readAsString()) as Map<String, dynamic>;

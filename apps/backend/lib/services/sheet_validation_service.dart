@@ -167,7 +167,7 @@ class SheetValidationService {
     return (response.values ?? []).map((row) => row.toList()).toList();
   }
 
-  Future<Map<String, dynamic>> importFromUrl(String sheetUrl, {List<String>? sheetNames}) async {
+  Future<List<String>> getSepTabsFromUrl(String sheetUrl) async {
     final parsed = parseSheetUrl(sheetUrl);
     final sheetsApi = await _buildSheetsApi();
 
@@ -177,9 +177,16 @@ class SheetValidationService {
         .whereType<String>()
         .toList();
 
-    final matchedSepSheets = allNames
+    return allNames
         .where((name) => RegExp(r'^SEP490_[^_]+_.+', caseSensitive: false).hasMatch(name))
         .toList();
+  }
+
+  Future<Map<String, dynamic>> importFromUrl(String sheetUrl, {List<String>? sheetNames}) async {
+    final parsed = parseSheetUrl(sheetUrl);
+    final sheetsApi = await _buildSheetsApi();
+
+    final matchedSepSheets = await getSepTabsFromUrl(sheetUrl);
 
     final targetSheets = (sheetNames != null && sheetNames.isNotEmpty)
         ? matchedSepSheets.where((s) => sheetNames.any((x) => x.toLowerCase() == s.toLowerCase())).toList()

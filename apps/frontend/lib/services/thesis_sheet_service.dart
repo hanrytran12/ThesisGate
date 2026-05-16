@@ -9,7 +9,26 @@ import 'package:googleapis_auth/auth_io.dart';
 import '../models/grade_models.dart';
 
 class ThesisSheetService {
-  Future<Map<String, dynamic>> importFromGoogleSheetUrl(String sheetUrl) async {
+  Future<List<String>> listImportTabs(String sheetUrl) async {
+    final baseUrl = dotenv.env['BACKEND_BASE_URL']?.trim().isNotEmpty == true
+        ? dotenv.env['BACKEND_BASE_URL']!.trim()
+        : 'http://127.0.0.1:8080';
+
+    final res = await http.post(
+      Uri.parse('$baseUrl/workflow/sheet/import/tabs'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'sheetUrl': sheetUrl}),
+    );
+
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    if (res.statusCode >= 400 || body['ok'] != true) {
+      final err = (body['error'] as Map<String, dynamic>?)?['message']?.toString() ?? res.body;
+      throw Exception(err);
+    }
+    return ((body['tabs'] as List?) ?? const []).map((e) => e.toString()).toList();
+  }
+
+  Future<Map<String, dynamic>> importFromGoogleSheetUrl(String sheetUrl, {List<String>? sheetNames}) async {
     final baseUrl = dotenv.env['BACKEND_BASE_URL']?.trim().isNotEmpty == true
         ? dotenv.env['BACKEND_BASE_URL']!.trim()
         : 'http://127.0.0.1:8080';
@@ -17,7 +36,11 @@ class ThesisSheetService {
     final res = await http.post(
       Uri.parse('$baseUrl/workflow/sheet/import'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'sheetUrl': sheetUrl, 'strictValidation': true}),
+      body: jsonEncode({
+        'sheetUrl': sheetUrl,
+        'strictValidation': true,
+        if (sheetNames != null && sheetNames.isNotEmpty) 'sheetNames': sheetNames,
+      }),
     );
 
     final body = jsonDecode(res.body) as Map<String, dynamic>;
