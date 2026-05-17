@@ -145,7 +145,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                   selectedTabs.addAll(found);
                                 });
                               } catch (e) {
-                                setLocal(() => error = e.toString());
+                                final raw = e.toString();
+                                final cleaned = raw.replaceFirst(RegExp(r'^Exception:\s*'), '').trim();
+                                final invalidUrl = cleaned.contains('URL Google Sheet không hợp lệ');
+                                setLocal(() => error = invalidUrl
+                                    ? 'URL Google Sheet không hợp lệ.'
+                                    : (cleaned.isEmpty ? 'URL Google Sheet không hợp lệ.' : cleaned));
                               } finally {
                                 setLocal(() => loadingTabs = false);
                               }
