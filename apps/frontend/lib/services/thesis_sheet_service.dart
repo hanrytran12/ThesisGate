@@ -43,7 +43,7 @@ class ThesisSheetService {
       }),
     ).timeout(
       const Duration(minutes: 5),
-      onTimeout: () => throw Exception('Hết thời gian chờ khi tạo CMT (5 phút)'),
+      onTimeout: () => throw Exception('Hết thời gian chờ khi import link (5 phút)'),
     );
 
     final body = jsonDecode(res.body) as Map<String, dynamic>;

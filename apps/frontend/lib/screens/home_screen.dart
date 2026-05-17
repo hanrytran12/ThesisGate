@@ -8,6 +8,7 @@
 // ============================================================
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -335,14 +336,54 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  List<String> _scanExistingCmtJsonPaths() {
+    final candidates = <Directory>[
+      Directory('${Directory.current.path}${Platform.pathSeparator}outputs${Platform.pathSeparator}cmt'),
+      Directory('${Directory.current.path}${Platform.pathSeparator}..${Platform.pathSeparator}backend${Platform.pathSeparator}outputs${Platform.pathSeparator}cmt'),
+      Directory('${Directory.current.path}${Platform.pathSeparator}apps${Platform.pathSeparator}backend${Platform.pathSeparator}outputs${Platform.pathSeparator}cmt'),
+    ];
+
+    final found = <String>{};
+    for (final dir in candidates) {
+      if (!dir.existsSync()) continue;
+      for (final e in dir.listSync(recursive: false, followLinks: false)) {
+        if (e is! File) continue;
+        final p = e.path.toLowerCase();
+        if (p.endsWith('.cmt.json')) {
+          found.add(e.path);
+        }
+      }
+    }
+
+    final paths = found.toList()
+      ..sort((a, b) => File(b).lastModifiedSync().compareTo(File(a).lastModifiedSync()));
+    return paths;
+  }
 
 
   Future<void> _evaluateWithAi() async {
-    if (_cmtJsonPaths.isEmpty) return;
+    final existingPaths = _scanExistingCmtJsonPaths();
+
+    setState(() {
+      _cmtJsonPaths
+        ..clear()
+        ..addAll(existingPaths);
+    });
+
+    if (existingPaths.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: Color(0xFFDA3633),
+          content: Text('Không tìm thấy file .cmt.json nào trong outputs/cmt'),
+          duration: Duration(seconds: 5),
+        ),
+      );
+      return;
+    }
 
     String? pathToEvaluate;
-    if (_cmtJsonPaths.length == 1) {
-      pathToEvaluate = _cmtJsonPaths.first;
+    if (existingPaths.length == 1) {
+      pathToEvaluate = existingPaths.first;
     } else {
       pathToEvaluate = await _showCmtPickerDialog();
       if (pathToEvaluate == null) return;
@@ -804,19 +845,17 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(width: 8),
             _TopBarButton(
               icon: Icons.cloud_download_outlined,
-              label: _isImportingSheet ? 'Đang tạo CMT...' : 'Import link -> Tạo CMT',
+              label: _isImportingSheet ? 'Đang import link...' : 'Import link',
               color: const Color(0xFF8957E5),
               onPressed: _isImportingSheet ? null : _showImportSheetDialog,
             ),
-            if (_cmtJsonPaths.isNotEmpty) ...[
-              const SizedBox(width: 8),
-              _TopBarButton(
-                icon: Icons.psychology_outlined,
-                label: _isEvaluating ? 'Đang đánh giá...' : 'Đánh giá với AI',
-                color: const Color(0xFF6E40C9),
-                onPressed: _isEvaluating ? null : _evaluateWithAi,
-              ),
-            ],
+            const SizedBox(width: 8),
+            _TopBarButton(
+              icon: Icons.psychology_outlined,
+              label: _isEvaluating ? 'Đang đánh giá...' : 'Đánh giá với AI',
+              color: const Color(0xFF6E40C9),
+              onPressed: _isEvaluating ? null : _evaluateWithAi,
+            ),
             const SizedBox(width: 8),
 
             // Nút Clear

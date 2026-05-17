@@ -209,7 +209,6 @@ class SheetValidationService {
       outputsDir.createSync(recursive: true);
     }
 
-    final decoderPath = _resolveDecoderPath();
     final results = <Map<String, dynamic>>[];
 
     for (final sepSheetName in targetSheets) {
@@ -222,12 +221,8 @@ class SheetValidationService {
 
       final ts = DateTime.now().millisecondsSinceEpoch;
       final safeSheet = sepSheetName.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-      final inputJsonPath = p.join(outputsDir.path, 'sheet_import_${safeSheet}_$ts.build.json');
-      final outputCmtPath = p.join(outputsDir.path, 'sheet_import_${safeSheet}_$ts.cmt');
 
-      await File(inputJsonPath).writeAsString(jsonEncode(payload));
-
-      // Write .cmt.json sidecar with named fields for AI evaluation
+      // Write .cmt.json for AI evaluation/build-later flow
       final outputCmtJsonPath = p.join(outputsDir.path, 'sheet_import_${safeSheet}_$ts.cmt.json');
       final rawRows = payload['students'] as List;
       final cmtJsonStudents = <Map<String, dynamic>>[];
@@ -305,25 +300,9 @@ class SheetValidationService {
         'students':  cmtJsonStudents,
       }));
 
-      final result = await Process.run(
-        decoderPath,
-        ['--build-cmt', inputJsonPath, outputCmtPath],
-        runInShell: false,
-      );
-
-      if (result.exitCode != 0) {
-        results.add({
-          'ok': false,
-          'sheetName': sepSheetName,
-          'error': result.stderr.toString().trim(),
-        });
-        continue;
-      }
-
       results.add({
         'ok': true,
         'sheetName': sepSheetName,
-        'cmtFilePath': outputCmtPath,
         'cmtJsonPath': outputCmtJsonPath,
       });
     }
@@ -336,19 +315,6 @@ class SheetValidationService {
       'failedCount': results.where((r) => r['ok'] != true).length,
       'results': results,
     };
-  }
-
-  String _resolveDecoderPath() {
-    final candidates = <String>[
-      p.join(Directory.current.path, '..', 'decoder', 'bin', 'Release', 'net48', 'decoder.exe'),
-      p.join(Directory.current.path, '..', 'decoder', 'bin', 'Debug', 'net48', 'decoder.exe'),
-    ];
-
-    for (final c in candidates) {
-      if (File(c).existsSync()) return c;
-    }
-
-    throw StateError('Không tìm thấy decoder.exe. Hãy build apps/decoder trước.');
   }
 
   SheetValidationResult _validateRows(
