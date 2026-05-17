@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:path/path.dart' as p;
+
 class AiEvaluationService {
   static const String _defaultBaseUrl = 'http://localhost:11434';
   static const String _defaultModel = 'qwen2.5:7b';
@@ -43,6 +45,15 @@ class AiEvaluationService {
       if (value.isNotEmpty) return value;
     }
     return null;
+  }
+
+  Future<Map<String, dynamic>> evaluateAndRebuildCmt(String cmtJsonPath) async {
+    final eval = await evaluateFile(cmtJsonPath);
+    final rebuiltPath = await _rebuildCmtFromEvaluatedJson(cmtJsonPath);
+    return {
+      ...eval,
+      'rebuiltCmtPath': rebuiltPath,
+    };
   }
 
   Future<Map<String, dynamic>> evaluateFile(String cmtJsonPath) async {
@@ -338,6 +349,83 @@ Trả lời CHÍNH XÁC theo định dạng JSON, không thêm bất kỳ text n
 
     final decoded = jsonDecode(body) as Map<String, dynamic>;
     return decoded['response'] as String? ?? '';
+  }
+
+  Future<String> _rebuildCmtFromEvaluatedJson(String cmtJsonPath) async {
+    final file = File(cmtJsonPath);
+    final raw = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+    final students = (raw['students'] as List).cast<Map<String, dynamic>>();
+
+    final rows = <List<String>>[
+      [
+        'Tên khóa luận (Tiếng Việt)',
+        'Tên khóa luận (Tiếng Anh)',
+        'Roll',
+        'Họ tên sinh viên bảo vệ',
+        'Nhận xét GV về nội dung khóa luận',
+        'Nhận xét GV về hình thức khóa luận',
+        'Nhận xét GV về thái độ sinh viên',
+        'Kết luận - Mức độ đạt yêu cầu',
+        'Kết luận - Hạn chế',
+        'AI Decision',
+        'AI Note',
+      ]
+    ];
+
+    for (final s in students) {
+      String decisionLabel() {
+        if ((s['agree_to_defense'] as String? ?? '').toLowerCase() == 'x') return 'agree_to_defense';
+        if ((s['revised_for_the_second_defense'] as String? ?? '').toLowerCase() == 'x') {
+          return 'revised_for_the_second_defense';
+        }
+        if ((s['disagree_to_defend'] as String? ?? '').toLowerCase() == 'x') return 'disagree_to_defend';
+        return '';
+      }
+
+      rows.add([
+        (s['titleVN'] ?? '').toString(),
+        (s['titleEN'] ?? '').toString(),
+        (s['roll'] ?? '').toString(),
+        (s['name'] ?? '').toString(),
+        (s['content'] ?? '').toString(),
+        (s['form'] ?? '').toString(),
+        (s['attitude'] ?? '').toString(),
+        (s['achievement'] ?? '').toString(),
+        (s['limitation'] ?? '').toString(),
+        decisionLabel(),
+        (s['note'] ?? '').toString(),
+      ]);
+    }
+
+    final outDir = p.dirname(cmtJsonPath);
+    final stem = p.basename(cmtJsonPath).replaceAll('.cmt.json', '');
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    final buildJsonPath = p.join(outDir, '${stem}_ai_$ts.build.json');
+    final outputCmtPath = p.join(outDir, '${stem}_ai_$ts.cmt');
+
+    await File(buildJsonPath).writeAsString(jsonEncode({
+      'spreadsheetId': 'AI_EVAL',
+      'sheetName': (raw['sheetName'] ?? 'SEP490_AI').toString(),
+      'students': rows,
+    }));
+
+    final decoderPath = _resolveDecoderPath();
+    final result = await Process.run(decoderPath, ['--build-cmt', buildJsonPath, outputCmtPath], runInShell: false);
+    if (result.exitCode != 0) {
+      throw StateError('Rebuild .cmt thất bại (exit=${result.exitCode}). ${result.stderr}');
+    }
+    return outputCmtPath;
+  }
+
+  String _resolveDecoderPath() {
+    final candidates = <String>[
+      p.join(Directory.current.path, '..', 'decoder', 'bin', 'Release', 'net48', 'decoder.exe'),
+      p.join(Directory.current.path, '..', 'decoder', 'bin', 'Debug', 'net48', 'decoder.exe'),
+    ];
+    for (final c in candidates) {
+      if (File(c).existsSync()) return c;
+    }
+    throw StateError('Không tìm thấy decoder.exe. Hãy build apps/decoder trước.');
   }
 
   Map<String, dynamic> _parseResponse(String rawText) {
