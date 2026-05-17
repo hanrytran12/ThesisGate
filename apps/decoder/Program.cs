@@ -1,3 +1,4 @@
+using Newtonsoft.Json;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -5,7 +6,6 @@ using System.IO;
 using System.Reflection;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Formatters.Binary;
-using Newtonsoft.Json;
 using System.Text;
 
 namespace FgDecoder
@@ -71,9 +71,9 @@ namespace FgDecoder
 
                 var output = new FgOutput();
                 output.TypeName = root.GetType().FullName;
-                output.Version  = GetField<string>(root, "Version");
+                output.Version = GetField<string>(root, "Version");
                 output.Semester = GetField<string>(root, "Semester");
-                output.Login    = GetField<string>(root, "Login");
+                output.Login = GetField<string>(root, "Login");
 
                 var subjectClassGrades = GetField<IEnumerable>(root, "SubjectClassGrades");
                 if (subjectClassGrades != null)
@@ -83,7 +83,7 @@ namespace FgDecoder
                         var sc = new SubjectClassResult();
                         // Đúng tên field: Subject + Class
                         sc.Subject = NormalizeText(GetAnyStringField(scg, "Subject"));
-                        sc.Class   = NormalizeText(GetAnyStringField(scg, "Class"));
+                        sc.Class = NormalizeText(GetAnyStringField(scg, "Class"));
 
                         // Lấy list sinh viên từ field "Students"
                         var studentsEnum = GetField<IEnumerable>(scg, "Students");
@@ -96,8 +96,8 @@ namespace FgDecoder
 
                                 // Student dùng auto-property → backing field <Roll>k__BackingField
                                 // Nhưng GetAnyStringField tìm property trước → đúng
-                                var roll    = NormalizeText(GetAnyStringField(stu, "Roll"));
-                                var name    = NormalizeText(GetAnyStringField(stu, "Name"));
+                                var roll = NormalizeText(GetAnyStringField(stu, "Roll"));
+                                var name = NormalizeText(GetAnyStringField(stu, "Name"));
                                 var comment = NormalizeText(GetAnyStringField(stu, "Comment"));
 
                                 // Lấy các GradeComponent
@@ -111,18 +111,18 @@ namespace FgDecoder
                                         gradeComponents.Add(new GradeComponentRecord
                                         {
                                             Component = NormalizeText(GetAnyStringField(gc, "Component") ?? ""),
-                                            Grade     = NormalizeText(GetAnyStringField(gc, "Grade")     ?? "")
+                                            Grade = NormalizeText(GetAnyStringField(gc, "Grade") ?? "")
                                         });
                                     }
                                 }
 
                                 sc.Students.Add(new StudentRecord
                                 {
-                                    Stt        = stt++,
-                                    Roll       = roll    ?? "",
-                                    Name       = name    ?? "",
-                                    Comment    = comment ?? "",
-                                    Grades     = gradeComponents
+                                    Stt = stt++,
+                                    Roll = roll ?? "",
+                                    Name = name ?? "",
+                                    Comment = comment ?? "",
+                                    Grades = gradeComponents
                                 });
                             }
                         }
@@ -205,9 +205,9 @@ namespace FgDecoder
                 {
                     list.Add(new StudentRecord
                     {
-                        Stt     = stt++,
-                        Roll    = roll    ?? "",
-                        Name    = name    ?? "",
+                        Stt = stt++,
+                        Roll = roll ?? "",
+                        Name = name ?? "",
                         Comment = comment ?? ""
                     });
                 }
@@ -352,7 +352,7 @@ namespace FgDecoder
         // ──────────────────────────────────────────────
         static Assembly ResolveAssembly(object sender, ResolveEventArgs args)
         {
-            var name   = new AssemblyName(args.Name).Name;
+            var name = new AssemblyName(args.Name).Name;
             var exeDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
 
             foreach (var candidate in new[]
@@ -450,6 +450,8 @@ namespace FgDecoder
                     int idxAttitude = FindCol("attitude_review", "nhận xét gv về thái độ sinh viên", "nhan xet gv ve thai do sinh vien");
                     int idxAchievement = FindCol("achievement_level", "kết luận - mức độ đạt yêu cầu", "ket luan - muc do dat yeu cau");
                     int idxLimitation = FindCol("limitation", "kết luận - hạn chế", "ket luan - han che");
+                    int idxAiDecision = FindCol("ai decision", "decision", "ai_decision");
+                    int idxAiNote = FindCol("ai note", "note", "ai_note");
 
                     var firstDataRow = studentsToken[1] as Newtonsoft.Json.Linq.JArray;
                     if (firstDataRow != null)
@@ -469,7 +471,7 @@ namespace FgDecoder
                         if (row == null) continue;
                         var sid = GetTokenCell(row, idxStudentId);
                         var name = GetTokenCell(row, idxFullName);
-                        
+
                         // Validate: Bỏ qua nếu thiếu Mã SV hoặc thiếu Họ Tên
                         if (string.IsNullOrWhiteSpace(sid) || string.IsNullOrWhiteSpace(name)) continue;
 
@@ -478,10 +480,16 @@ namespace FgDecoder
                         SetIfExists(sObj, thesisStudentType, "Roll", sid);
                         SetIfExists(sObj, thesisStudentType, "FullName", name);
                         SetIfExists(sObj, thesisStudentType, "Name", name);
-                        SetIfExists(sObj, thesisStudentType, "Agree_to_defense", "x");
-                        SetIfExists(sObj, thesisStudentType, "Revised_for_the_second_defense", "");
-                        SetIfExists(sObj, thesisStudentType, "Disagree_to_defense", "");
-                        SetIfExists(sObj, thesisStudentType, "Note", "");
+                        var aiDecision = GetTokenCell(row, idxAiDecision).ToLowerInvariant();
+                        var aiNote = GetTokenCell(row, idxAiNote);
+                        var agree = aiDecision == "agree_to_defense" ? "x" : "";
+                        var revised = aiDecision == "revised_for_the_second_defense" ? "x" : "";
+                        var disagree = aiDecision == "disagree_to_defend" ? "x" : "";
+
+                        SetIfExists(sObj, thesisStudentType, "Agree_to_defense", agree);
+                        SetIfExists(sObj, thesisStudentType, "Revised_for_the_second_defense", revised);
+                        SetIfExists(sObj, thesisStudentType, "Disagree_to_defend", disagree);
+                        SetIfExists(sObj, thesisStudentType, "Note", aiNote);
                         addMethod.Invoke(studentsListObj, new[] { sObj });
                     }
                 }
@@ -551,9 +559,9 @@ namespace FgDecoder
     class FgOutput
     {
         [JsonProperty("typeName")] public string TypeName { get; set; }
-        [JsonProperty("version")]  public string Version  { get; set; }
+        [JsonProperty("version")] public string Version { get; set; }
         [JsonProperty("semester")] public string Semester { get; set; }
-        [JsonProperty("login")]    public string Login    { get; set; }
+        [JsonProperty("login")] public string Login { get; set; }
 
         [JsonProperty("subjectClasses")]
         public List<SubjectClassResult> SubjectClasses { get; set; } = new List<SubjectClassResult>();
@@ -562,7 +570,7 @@ namespace FgDecoder
     class SubjectClassResult
     {
         [JsonProperty("subject")] public string Subject { get; set; }  // "PRN221"
-        [JsonProperty("class")]   public string Class   { get; set; }  // "NET1710"
+        [JsonProperty("class")] public string Class { get; set; }  // "NET1710"
 
         [JsonProperty("students")]
         public List<StudentRecord> Students { get; set; } = new List<StudentRecord>();
@@ -570,9 +578,9 @@ namespace FgDecoder
 
     class StudentRecord
     {
-        [JsonProperty("stt")]     public int    Stt     { get; set; }
-        [JsonProperty("roll")]    public string Roll    { get; set; } = "";
-        [JsonProperty("name")]    public string Name    { get; set; } = "";
+        [JsonProperty("stt")] public int Stt { get; set; }
+        [JsonProperty("roll")] public string Roll { get; set; } = "";
+        [JsonProperty("name")] public string Name { get; set; } = "";
         [JsonProperty("comment")] public string Comment { get; set; } = "";
 
         [JsonProperty("grades")]
@@ -582,6 +590,6 @@ namespace FgDecoder
     class GradeComponentRecord
     {
         [JsonProperty("component")] public string Component { get; set; } = "";
-        [JsonProperty("grade")]     public string Grade     { get; set; } = "";
+        [JsonProperty("grade")] public string Grade { get; set; } = "";
     }
 }

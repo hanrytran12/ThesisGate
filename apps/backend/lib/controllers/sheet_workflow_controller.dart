@@ -152,7 +152,7 @@ class SheetWorkflowController {
         });
       }
 
-      final result = await _aiService.evaluateFile(resolvedPath);
+      final result = await _aiService.evaluateAndRebuildCmt(resolvedPath);
       return _json(200, result);
     } catch (e) {
       return _json(500, {
