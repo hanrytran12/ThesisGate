@@ -281,6 +281,23 @@ class SheetValidationService {
           }
         }
       }
+
+      // ── VALIDATE trước khi gọi decoder ─────────────────────
+      final warnings = _validateCmtStudents(cmtJsonStudents);
+      if (warnings.isNotEmpty) {
+        final missingCount = warnings.length;
+        results.add({
+          'ok': false,
+          'sheetName': sepSheetName,
+          'code': 'VALIDATION_FAILED',
+          'message': '$missingCount sinh viên thiếu dữ liệu bắt buộc. File .cmt chưa được tạo.',
+          'warnings': warnings.map((w) => w.toJson()).toList(),
+        });
+        // Không ghi file build.json hoặc .cmt nếu chưa đủ dữ liệu
+        continue;
+      }
+      // ────────────────────────────────────────────────────────
+
       await File(outputCmtJsonPath).writeAsString(jsonEncode({
         'format':    'ThesisGate-CMT-v1',
         'sheetName': sepSheetName,
@@ -484,5 +501,45 @@ class SheetValidationService {
 
   String _normalizeHeader(String input) {
     return input.trim().toLowerCase().replaceAll(' ', '_');
+  }
+
+  // ── Validate dữ liệu sinh viên trước khi tạo CMT ──────────
+  // Nhận vào danh sách students đã propagate merged-cell.
+  // Trả về danh sách CmtStudentWarning cho các sinh viên thiếu field.
+  // Tất cả 9 field đều bắt buộc, bao gồm cả `limitation`.
+  List<CmtStudentWarning> _validateCmtStudents(
+    List<Map<String, dynamic>> students,
+  ) {
+    // Các field bắt buộc phải có giá trị không rỗng
+    const requiredFields = [
+      'roll',
+      'name',
+      'titleVN',
+      'titleEN',
+      'content',
+      'form',
+      'attitude',
+      'achievement',
+      'limitation',
+    ];
+
+    final warnings = <CmtStudentWarning>[];
+
+    for (final student in students) {
+      final missing = <String>[];
+      for (final field in requiredFields) {
+        final value = (student[field] as String? ?? '').trim();
+        if (value.isEmpty) missing.add(field);
+      }
+      if (missing.isNotEmpty) {
+        warnings.add(CmtStudentWarning(
+          roll: (student['roll'] as String? ?? '').trim(),
+          name: (student['name'] as String? ?? '').trim(),
+          missingFields: missing,
+        ));
+      }
+    }
+
+    return warnings;
   }
 }

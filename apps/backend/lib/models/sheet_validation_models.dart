@@ -70,3 +70,22 @@ class SheetValidationResult {
         'errors': errors.map((e) => e.toJson()).toList(),
       };
 }
+
+/// Thông tin một sinh viên bị thiếu dữ liệu khi validate trước khi xuất CMT
+class CmtStudentWarning {
+  final String roll;
+  final String name;
+  final List<String> missingFields;
+
+  CmtStudentWarning({
+    required this.roll,
+    required this.name,
+    required this.missingFields,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'roll': roll,
+        'name': name,
+        'missingFields': missingFields,
+      };
+}

@@ -215,7 +215,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final result = await _sheetService.importFromGoogleSheetUrl(sheetUrl, sheetNames: selectedTabs);
       if (!mounted) return;
 
-      // Accumulate cmtJsonPath values from all successful results
+      // Tích lũy cmtJsonPath từ các tab thành công
       final results = (result['results'] as List?) ?? [];
       final newPaths = results
           .whereType<Map<String, dynamic>>()
@@ -231,13 +231,8 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: const Color(0xFF238636),
-          content: Text('Tạo CMT: success=${result['successCount']}, failed=${result['failedCount']}'),
-          duration: const Duration(seconds: 6),
-        ),
-      );
+      // Hiển thị dialog chi tiết kết quả
+      await _showImportResultDialog(results.whereType<Map<String, dynamic>>().toList());
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -251,6 +246,96 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) setState(() => _isImportingSheet = false);
     }
   }
+
+  Future<void> _showImportResultDialog(List<Map<String, dynamic>> results) async {
+    final successItems = results.where((r) => r['ok'] == true).toList();
+    final failedItems  = results.where((r) => r['ok'] != true).toList();
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF161B22),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(
+            color: failedItems.isNotEmpty && successItems.isEmpty
+                ? const Color(0xFFDA3633)
+                : failedItems.isNotEmpty
+                    ? const Color(0xFFD29922)
+                    : const Color(0xFF238636),
+            width: 1,
+          ),
+        ),
+        title: Row(
+          children: [
+            Icon(
+              failedItems.isNotEmpty && successItems.isEmpty
+                  ? Icons.error_outline
+                  : failedItems.isNotEmpty
+                      ? Icons.warning_amber_rounded
+                      : Icons.check_circle_outline,
+              color: failedItems.isNotEmpty && successItems.isEmpty
+                  ? const Color(0xFFDA3633)
+                  : failedItems.isNotEmpty
+                      ? const Color(0xFFD29922)
+                      : const Color(0xFF3FB950),
+              size: 22,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Kết quả tạo CMT (${successItems.length} thành công / ${failedItems.length} lỗi)',
+                style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: 600,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Danh sách tab thành công ──
+              if (successItems.isNotEmpty) ...[
+                const Text(
+                  '✅  Các tab đã xuất .cmt thành công:',
+                  style: TextStyle(color: Color(0xFF3FB950), fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 6),
+                ...successItems.map((r) => _ImportResultSuccessRow(item: r)),
+                const SizedBox(height: 14),
+              ],
+              // ── Danh sách tab bị cảnh báo ──
+              if (failedItems.isNotEmpty) ...[
+                const Text(
+                  '⚠️  Các tab chưa đủ dữ liệu (file .cmt chưa được tạo):',
+                  style: TextStyle(color: Color(0xFFD29922), fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 320),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: failedItems.map((r) => _ImportResultWarningRow(item: r)).toList(),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Đóng', style: TextStyle(color: Color(0xFF8B949E))),
+          ),
+        ],
+      ),
+    );
+  }
+
+
 
   Future<void> _evaluateWithAi() async {
     if (_cmtJsonPaths.isEmpty) return;
@@ -1370,4 +1455,187 @@ class _LoadingWidget extends StatelessWidget {
     );
   }
 }
+
+// ── Widget hiển thị 1 tab đã tạo CMT thành công ───────────────────────────
+class _ImportResultSuccessRow extends StatelessWidget {
+  final Map<String, dynamic> item;
+  const _ImportResultSuccessRow({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    final sheetName  = item['sheetName']?.toString() ?? '';
+    final cmtPath    = item['cmtFilePath']?.toString() ?? '';
+    final displayPath = cmtPath.replaceAll('\\', '/').split('/').last;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0D1117),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF238636).withAlpha(120)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.check_circle, color: Color(0xFF3FB950), size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  sheetName,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (displayPath.isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    displayPath,
+                    style: const TextStyle(
+                      color: Color(0xFF3FB950),
+                      fontSize: 11,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Widget hiển thị 1 tab bị cảnh báo thiếu dữ liệu ──────────────────────
+class _ImportResultWarningRow extends StatelessWidget {
+  final Map<String, dynamic> item;
+  const _ImportResultWarningRow({required this.item});
+
+  // Ánh xạ field key → tên cột tiếng Việt thân thiện
+  static const _fieldLabels = <String, String>{
+    'roll':        'Mã sinh viên (Roll)',
+    'name':        'Họ tên sinh viên',
+    'titleVN':     'Tên khóa luận (Tiếng Việt)',
+    'titleEN':     'Tên khóa luận (Tiếng Anh)',
+    'content':     'Nhận xét GV về nội dung',
+    'form':        'Nhận xét GV về hình thức',
+    'attitude':    'Nhận xét GV về thái độ sinh viên',
+    'achievement': 'Kết luận - Mức độ đạt yêu cầu',
+    'limitation':  'Kết luận - Hạn chế',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final sheetName = item['sheetName']?.toString() ?? '';
+    final message   = item['message']?.toString() ?? 'Thiếu dữ liệu bắt buộc.';
+    final rawWarnings = (item['warnings'] as List?) ?? [];
+    final warnings = rawWarnings.whereType<Map<String, dynamic>>().toList();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0D1117),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFD29922).withAlpha(130)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header của tab
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFD29922).withAlpha(20),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.warning_amber_rounded, color: Color(0xFFD29922), size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        sheetName,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        message,
+                        style: const TextStyle(color: Color(0xFFD29922), fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Danh sách sinh viên thiếu field
+          if (warnings.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Sinh viên cần điền thêm:',
+                    style: TextStyle(color: Color(0xFF8B949E), fontSize: 12),
+                  ),
+                  const SizedBox(height: 6),
+                  ...warnings.map((w) {
+                    final roll = w['roll']?.toString() ?? '?';
+                    final name = w['name']?.toString() ?? '?';
+                    final missing = ((w['missingFields'] as List?) ?? [])
+                        .map((f) => _fieldLabels[f.toString()] ?? f.toString())
+                        .join(', ');
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('• ', style: TextStyle(color: Color(0xFFD29922), fontSize: 12)),
+                          Expanded(
+                            child: RichText(
+                              text: TextSpan(
+                                style: const TextStyle(fontSize: 12, height: 1.4),
+                                children: [
+                                  TextSpan(
+                                    text: '$roll — $name\n',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  TextSpan(
+                                    text: 'Thiếu: $missing',
+                                    style: const TextStyle(color: Color(0xFFDA3633)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 
