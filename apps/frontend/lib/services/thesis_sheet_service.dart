@@ -47,7 +47,9 @@ class ThesisSheetService {
     );
 
     final body = jsonDecode(res.body) as Map<String, dynamic>;
-    if (res.statusCode >= 400 || body['ok'] != true) {
+    // Chỉ throw khi HTTP lỗi. Trường hợp ok:false (vd: validation fail theo tab)
+    // vẫn trả body để UI hiển thị dialog kết quả chi tiết.
+    if (res.statusCode >= 400) {
       final err = (body['error'] as Map<String, dynamic>?)?['message']?.toString() ?? res.body;
       throw Exception(err);
     }
