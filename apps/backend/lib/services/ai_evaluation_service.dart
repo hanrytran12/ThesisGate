@@ -4,7 +4,7 @@ import 'dart:io';
 
 class AiEvaluationService {
   static const String _defaultBaseUrl = 'http://localhost:11434';
-  static const String _defaultModel = 'llama3.2';
+  static const String _defaultModel = 'qwen2.5:7b';
 
   // Minimum characters the longest single evaluation field must have.
   // Blocks completely empty files and obvious placeholder/test data.
@@ -21,8 +21,8 @@ class AiEvaluationService {
   final String _ollamaModel;
 
   AiEvaluationService()
-      : _ollamaBaseUrl = _readEnvKey('OLLAMA_BASE_URL') ?? _defaultBaseUrl,
-        _ollamaModel = _readEnvKey('OLLAMA_MODEL') ?? _defaultModel;
+    : _ollamaBaseUrl = _readEnvKey('OLLAMA_BASE_URL') ?? _defaultBaseUrl,
+      _ollamaModel = _readEnvKey('OLLAMA_MODEL') ?? _defaultModel;
 
   static String? _readEnvKey(String key) {
     final fromOs = Platform.environment[key];
@@ -67,48 +67,64 @@ class AiEvaluationService {
       (s) => (s['content'] as String? ?? '').isNotEmpty,
       orElse: () => students.first,
     );
-    final sharedContent     = base['content']     as String? ?? '';
-    final sharedForm        = base['form']        as String? ?? '';
+    final sharedContent = base['content'] as String? ?? '';
+    final sharedForm = base['form'] as String? ?? '';
     final sharedAchievement = base['achievement'] as String? ?? '';
-    final sharedLimitation  = base['limitation']  as String? ?? '';
-    final combinedAttitude  = base['attitude']    as String? ?? '';
+    final sharedLimitation = base['limitation'] as String? ?? '';
+    final combinedAttitude = base['attitude'] as String? ?? '';
 
     // ── Data quality guards ──────────────────────────────────────────────
     _validateDataQuality(
-      sharedContent:     sharedContent,
-      sharedForm:        sharedForm,
+      sharedContent: sharedContent,
+      sharedForm: sharedForm,
       sharedAchievement: sharedAchievement,
-      sharedLimitation:  sharedLimitation,
-      combinedAttitude:  combinedAttitude,
+      sharedLimitation: sharedLimitation,
+      combinedAttitude: combinedAttitude,
     );
     // ────────────────────────────────────────────────────────────────────
 
-    // Evaluate all students in parallel — Ollama queues internally, no shared state per student
-    final evalFutures = students.map((student) async {
+    // malformed output under concurrent load, resulting in fallback decisions for most students.
+    final results = <Map<String, dynamic>>[];
+    for (final student in students) {
       final roll = student['roll'] as String? ?? '';
+      final name = student['name'] as String? ?? '';
       try {
         final evalResult = await _evaluateStudent(
           student,
-          sharedContent:     sharedContent,
-          sharedForm:        sharedForm,
+          sharedContent: sharedContent,
+          sharedForm: sharedForm,
           sharedAchievement: sharedAchievement,
-          sharedLimitation:  sharedLimitation,
-          combinedAttitude:  combinedAttitude,
+          sharedLimitation: sharedLimitation,
+          combinedAttitude: combinedAttitude,
         );
-        final decision = evalResult['decision'] as String? ?? 'revised_for_the_second_defense';
-        student['agree_to_defense']               = decision == 'agree_to_defense'               ? 'x' : '';
-        student['revised_for_the_second_defense'] = decision == 'revised_for_the_second_defense' ? 'x' : '';
-        student['disagree_to_defend']             = decision == 'disagree_to_defend'             ? 'x' : '';
-        student['note']                           = evalResult['note'] as String? ?? '';
-        return <String, dynamic>{'roll': roll, 'ok': true, 'decision': decision};
+        final decision =
+            evalResult['decision'] as String? ??
+            'revised_for_the_second_defense';
+        student['agree_to_defense'] = decision == 'agree_to_defense' ? 'x' : '';
+        student['revised_for_the_second_defense'] =
+            decision == 'revised_for_the_second_defense' ? 'x' : '';
+        student['disagree_to_defend'] = decision == 'disagree_to_defend'
+            ? 'x'
+            : '';
+        student['note'] = evalResult['note'] as String? ?? '';
+        results.add({
+          'roll': roll,
+          'name': name,
+          'ok': true,
+          'decision': decision,
+        });
       } catch (e) {
-        return <String, dynamic>{'roll': roll, 'ok': false, 'error': e.toString()};
+        results.add({
+          'roll': roll,
+          'name': name,
+          'ok': false,
+          'error': e.toString(),
+        });
       }
-    });
+    }
 
-    final results = await Future.wait(evalFutures);
     final successCount = results.where((r) => r['ok'] == true).length;
-    final failedCount  = results.length - successCount;
+    final failedCount = results.length - successCount;
 
     raw['evaluatedAt'] = DateTime.now().toIso8601String();
     await file.writeAsString(const JsonEncoder.withIndent('  ').convert(raw));
@@ -178,16 +194,29 @@ class AiEvaluationService {
     }
 
     final prompt = _buildPrompt(
-      roll:              roll,
-      name:              name,
-      sharedContent:     sharedContent,
-      sharedForm:        sharedForm,
+      roll: roll,
+      name: name,
+      sharedContent: sharedContent,
+      sharedForm: sharedForm,
       sharedAchievement: sharedAchievement,
-      sharedLimitation:  sharedLimitation,
-      combinedAttitude:  combinedAttitude,
+      sharedLimitation: sharedLimitation,
+      combinedAttitude: combinedAttitude,
     );
-    final rawText = await _callOllama(prompt);
-    return _parseResponse(rawText);
+
+    // Try up to 2 times — llama3.2 occasionally returns malformed JSON on first attempt
+    for (var attempt = 1; attempt <= 2; attempt++) {
+      final rawText = await _callOllama(prompt);
+      final result = _parseResponse(rawText);
+      final isFallback =
+          (result['note'] as String?)?.contains('AI không thể xác định') ??
+          false;
+      if (!isFallback || attempt == 2) return result;
+    }
+    // Unreachable but satisfies the compiler
+    return {
+      'decision': 'revised_for_the_second_defense',
+      'note': 'AI không thể xác định kết quả rõ ràng. Cần xem xét thủ công.',
+    };
   }
 
   String _buildPrompt({
@@ -201,11 +230,11 @@ class AiEvaluationService {
   }) {
     // Check whether the student's name can be found in the attitude paragraph.
     // Use the given name (last Vietnamese name component) as it is the most distinctive.
-    final nameParts  = name.trim().split(RegExp(r'\s+'));
-    final givenName  = nameParts.isNotEmpty ? nameParts.last : name;
+    final nameParts = name.trim().split(RegExp(r'\s+'));
+    final givenName = nameParts.isNotEmpty ? nameParts.last : name;
     final lowerAtitude = combinedAttitude.toLowerCase();
-    final nameFound  = givenName.length > 1 &&
-        lowerAtitude.contains(givenName.toLowerCase());
+    final nameFound =
+        givenName.length > 1 && lowerAtitude.contains(givenName.toLowerCase());
 
     final attitudeBlock = combinedAttitude.trim().isNotEmpty
         ? combinedAttitude
@@ -213,7 +242,7 @@ class AiEvaluationService {
 
     final nameHint = (!nameFound && combinedAttitude.trim().isNotEmpty)
         ? '\nLưu ý: Không tìm thấy tên "$name" trong đoạn nhận xét thái độ. '
-          'Chỉ dựa vào đánh giá chung của nhóm để quyết định.'
+              'Chỉ dựa vào đánh giá chung của nhóm để quyết định.'
         : '';
 
     return '''Bạn là hội đồng phản biện khóa luận tốt nghiệp đại học.
@@ -231,12 +260,17 @@ SINH VIÊN CẦN ĐÁNH GIÁ: $name ($roll)$nameHint
 
 Nhiệm vụ:
 1. Tìm câu/đoạn trong phần "NHẬN XÉT THÁI ĐỘ" đề cập đến sinh viên "$name"
-2. Dựa vào nhận xét riêng của sinh viên đó VÀ đánh giá chung của nhóm, quyết định:
-   - "agree_to_defense": Đồng ý cho sinh viên bảo vệ khóa luận
-   - "revised_for_the_second_defense": Yêu cầu chỉnh sửa và bảo vệ lần 2
-   - "disagree_to_defend": Không đồng ý cho bảo vệ
+2. Dựa vào nhận xét riêng của sinh viên đó VÀ đánh giá chung của nhóm, áp dụng tiêu chí sau:
 
-QUAN TRỌNG: Nếu nội dung nhận xét không đủ thông tin, không rõ ràng hoặc không có ý nghĩa thực tế để đưa ra quyết định có căn cứ, hãy trả về "revised_for_the_second_defense" với note giải thích — không được đoán mò.
+Tiêu chí quyết định (theo thứ tự ưu tiên):
+- "disagree_to_defend": Sinh viên bị đánh giá rất tiêu cực, nhiều lần vi phạm nghiêm trọng, không đủ điều kiện
+- "revised_for_the_second_defense": Sinh viên có điểm yếu RÕ RÀNG được nêu tên (chậm trễ, thiếu chủ động, không hoàn thành đúng hạn, vắng họp...) — dù có điểm tích cực đi kèm
+- "agree_to_defense": Sinh viên KHÔNG có bất kỳ điểm yếu nào được nêu tên, chỉ có nhận xét tích cực
+
+Lưu ý quan trọng:
+- Nếu câu nhận xét về sinh viên vừa có mặt tốt vừa có mặt xấu → chọn "revised_for_the_second_defense"
+- Ưu tiên các từ tiêu cực như: "chưa", "chậm", "không", "thiếu", "vắng", "chưa đầy đủ"
+- Nếu nội dung không đủ thông tin hoặc không rõ ràng → chọn "revised_for_the_second_defense", không đoán mò
 
 Trả lời CHÍNH XÁC theo định dạng JSON, không thêm bất kỳ text nào khác:
 {"decision": "<một trong ba giá trị trên>", "note": "<lý do ngắn gọn tối đa 2 câu bằng tiếng Việt>"}''';
@@ -273,13 +307,15 @@ Trả lời CHÍNH XÁC theo định dạng JSON, không thêm bất kỳ text n
   Future<String> _doRequest(HttpClient client, Uri uri, String prompt) async {
     final request = await client.postUrl(uri);
     request.headers.contentType = ContentType.json;
-    request.write(jsonEncode({
-      'model': _ollamaModel,
-      'prompt': prompt,
-      'stream': false,
-      'format': 'json',
-      'options': {'temperature': 0.1},
-    }));
+    request.write(
+      jsonEncode({
+        'model': _ollamaModel,
+        'prompt': prompt,
+        'stream': false,
+        'format': 'json',
+        'options': {'temperature': 0.1},
+      }),
+    );
 
     final response = await request.close();
     final body = await response.transform(utf8.decoder).join();
@@ -311,10 +347,7 @@ Trả lời CHÍNH XÁC theo định dạng JSON, không thêm bất kỳ text n
       final parsed = jsonDecode(trimmed) as Map<String, dynamic>;
       final decision = parsed['decision'] as String? ?? '';
       if (_validDecisions.contains(decision)) {
-        return {
-          'decision': decision,
-          'note': parsed['note'] as String? ?? '',
-        };
+        return {'decision': decision, 'note': parsed['note'] as String? ?? ''};
       }
     } catch (_) {
       // JSON parse failed — fall through to substring fallback
