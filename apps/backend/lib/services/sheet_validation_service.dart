@@ -285,7 +285,7 @@ class SheetValidationService {
           'ok': false,
           'sheetName': sepSheetName,
           'code': 'VALIDATION_FAILED',
-          'message': '$missingCount sinh viên thiếu dữ liệu bắt buộc. File .cmt chưa được tạo.',
+          'message': '$missingCount sinh viên thiếu dữ liệu bắt buộc.',
           'warnings': warnings.map((w) => w.toJson()).toList(),
         });
         // Không ghi file build.json hoặc .cmt nếu chưa đủ dữ liệu

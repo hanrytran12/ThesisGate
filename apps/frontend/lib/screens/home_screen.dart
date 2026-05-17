@@ -108,7 +108,7 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
           backgroundColor: const Color(0xFF161B22),
-          title: const Text('Import Google Sheet -> Tạo CMT', style: TextStyle(color: Colors.white)),
+          title: const Text('Import Google Sheet', style: TextStyle(color: Colors.white)),
           content: SizedBox(
             width: 560,
             child: Column(
@@ -160,7 +160,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
                 if (tabs.isNotEmpty) ...[
                   const SizedBox(height: 10),
-                  const Text('Chọn tab export .cmt:', style: TextStyle(color: Colors.white70)),
+                  const Text('Chọn tab lấy dữ liệu:', style: TextStyle(color: Colors.white70)),
                   const SizedBox(height: 6),
                   Container(
                     constraints: const BoxConstraints(maxHeight: 220),
@@ -202,7 +202,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       Navigator.of(ctx).pop();
                       await _importSheetToCmt(url, selected);
                     },
-              child: const Text('Tạo CMT'),
+              child: const Text('Lây dữ liệu'),
             ),
           ],
         ),
@@ -218,8 +218,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
       // Tích lũy cmtJsonPath từ các tab thành công
       final results = (result['results'] as List?) ?? [];
-      final newPaths = results
-          .whereType<Map<String, dynamic>>()
+      final typedResults = results.whereType<Map<String, dynamic>>().toList();
+      final newPaths = typedResults
           .where((r) => r['ok'] == true)
           .map((r) => r['cmtJsonPath'] as String?)
           .whereType<String>()
@@ -232,8 +232,8 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
 
-      // Hiển thị dialog chi tiết kết quả
-      await _showImportResultDialog(results.whereType<Map<String, dynamic>>().toList());
+      // Luôn hiển thị dialog kết quả (kể cả chọn 1 tab và lỗi)
+      await _showImportResultDialog(typedResults);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -285,7 +285,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                'Kết quả tạo CMT (${successItems.length} thành công / ${failedItems.length} lỗi)',
+                'Kết quả lấy dữ liệu (${successItems.length} thành công / ${failedItems.length} lỗi)',
                 style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
               ),
             ),
@@ -297,32 +297,24 @@ class _HomeScreenState extends State<HomeScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Danh sách tab thành công ──
-              if (successItems.isNotEmpty) ...[
-                const Text(
-                  '✅  Các tab đã xuất .cmt thành công:',
-                  style: TextStyle(color: Color(0xFF3FB950), fontSize: 13, fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 6),
-                ...successItems.map((r) => _ImportResultSuccessRow(item: r)),
-                const SizedBox(height: 14),
-              ],
-              // ── Danh sách tab bị cảnh báo ──
-              if (failedItems.isNotEmpty) ...[
-                const Text(
-                  '⚠️  Các tab chưa đủ dữ liệu (file .cmt chưa được tạo):',
-                  style: TextStyle(color: Color(0xFFD29922), fontSize: 13, fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 6),
-                Container(
-                  constraints: const BoxConstraints(maxHeight: 320),
-                  child: SingleChildScrollView(
-                    child: Column(
-                      children: failedItems.map((r) => _ImportResultWarningRow(item: r)).toList(),
-                    ),
+              const Text(
+                'Kết quả từng tab:',
+                style: TextStyle(color: Color(0xFF8B949E), fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                constraints: const BoxConstraints(maxHeight: 360),
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: results.map((item) {
+                      final ok = item['ok'] == true;
+                      return ok
+                          ? _ImportResultSuccessRow(item: item)
+                          : _ImportResultWarningRow(item: item);
+                    }).toList(),
                   ),
                 ),
-              ],
+              ),
             ],
           ),
         ),
@@ -440,7 +432,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const Icon(Icons.psychology_outlined, color: Color(0xFF8957E5), size: 22),
           const SizedBox(width: 10),
           const Text(
-            'Chọn file CMT để đánh giá',
+            'Chọn file dữ liệu để đánh giá',
             style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
           ),
         ]),
