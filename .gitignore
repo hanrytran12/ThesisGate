@@ -22,6 +22,8 @@ Thumbs.db
 
 # Environment files
 **/.env
+.claude
+CLAUDE.md
 
 # Local generated outputs / samples
 apps/backend/outputs/

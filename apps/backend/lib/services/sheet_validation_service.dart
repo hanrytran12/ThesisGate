@@ -227,6 +227,67 @@ class SheetValidationService {
 
       await File(inputJsonPath).writeAsString(jsonEncode(payload));
 
+      // Write .cmt.json sidecar with named fields for AI evaluation
+      final outputCmtJsonPath = p.join(outputsDir.path, 'sheet_import_${safeSheet}_$ts.cmt.json');
+      final rawRows = payload['students'] as List;
+      final cmtJsonStudents = <Map<String, dynamic>>[];
+      if (rawRows.length > 1) {
+        final hMap = <String, int>{};
+        final headerRow = (rawRows[0] as List).map((e) => e.toString()).toList();
+        for (var hi = 0; hi < headerRow.length; hi++) {
+          hMap[_normalizeHeader(headerRow[hi])] = hi;
+        }
+        String colVal(List<String> row, List<String> keys) {
+          for (final k in keys) {
+            final idx = hMap[_normalizeHeader(k)];
+            if (idx != null && idx < row.length) {
+              final v = row[idx].trim();
+              if (v.isNotEmpty) return v;
+            }
+          }
+          return '';
+        }
+        for (var ri = 1; ri < rawRows.length; ri++) {
+          final row = (rawRows[ri] as List).map((e) => e.toString()).toList();
+          cmtJsonStudents.add({
+            'roll':        colVal(row, ['Roll', 'roll', 'student_id', 'mã sv']),
+            'name':        colVal(row, ['full_name', 'Họ tên sinh viên bảo vệ', 'họ tên']),
+            'titleVN':     colVal(row, ['vietnamese_title', 'Tên khóa luận (Tiếng Việt)']),
+            'titleEN':     colVal(row, ['english_title', 'Tên khóa luận (Tiếng Anh)']),
+            'content':     colVal(row, ['content_review', 'Nhận xét GV về nội dung khóa luận']),
+            'form':        colVal(row, ['format_review', 'Nhận xét GV về hình thức khóa luận']),
+            'attitude':    colVal(row, ['attitude_review', 'Nhận xét GV về thái độ sinh viên']),
+            'achievement': colVal(row, ['achievement_level', 'Kết luận - Mức độ đạt yêu cầu']),
+            'limitation':  colVal(row, ['limitation', 'Kết luận - Hạn chế']),
+          });
+        }
+
+        // Propagate thesis-level fields from first row to students with empty values
+        // (Google Sheets merged cells only return a value in the first merged row)
+        if (cmtJsonStudents.isNotEmpty) {
+          final base = cmtJsonStudents.first;
+          const thesisLevelFields = [
+            'titleVN', 'titleEN', 'content', 'form',
+            'achievement', 'limitation', 'attitude',
+          ];
+          for (var i = 1; i < cmtJsonStudents.length; i++) {
+            final s = cmtJsonStudents[i];
+            for (final field in thesisLevelFields) {
+              if ((s[field] as String? ?? '').isEmpty &&
+                  (base[field] as String? ?? '').isNotEmpty) {
+                s[field] = base[field];
+              }
+            }
+          }
+        }
+      }
+      await File(outputCmtJsonPath).writeAsString(jsonEncode({
+        'format':    'ThesisGate-CMT-v1',
+        'sheetName': sepSheetName,
+        'createdAt': DateTime.now().toIso8601String(),
+        'students':  cmtJsonStudents,
+      }));
+
       final result = await Process.run(
         decoderPath,
         ['--build-cmt', inputJsonPath, outputCmtPath],
@@ -246,6 +307,7 @@ class SheetValidationService {
         'ok': true,
         'sheetName': sepSheetName,
         'cmtFilePath': outputCmtPath,
+        'cmtJsonPath': outputCmtJsonPath,
       });
     }
 

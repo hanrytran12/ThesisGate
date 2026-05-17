@@ -9,15 +9,19 @@ import 'package:googleapis_auth/auth_io.dart';
 import '../models/grade_models.dart';
 
 class ThesisSheetService {
-  Future<List<String>> listImportTabs(String sheetUrl) async {
-    final baseUrl = dotenv.env['BACKEND_BASE_URL']?.trim().isNotEmpty == true
-        ? dotenv.env['BACKEND_BASE_URL']!.trim()
-        : 'http://127.0.0.1:8080';
+  static String get _backendBaseUrl {
+    final v = dotenv.env['BACKEND_BASE_URL']?.trim() ?? '';
+    return v.isNotEmpty ? v : 'http://127.0.0.1:8080';
+  }
 
+  Future<List<String>> listImportTabs(String sheetUrl) async {
     final res = await http.post(
-      Uri.parse('$baseUrl/workflow/sheet/import/tabs'),
+      Uri.parse('$_backendBaseUrl/workflow/sheet/import/tabs'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'sheetUrl': sheetUrl}),
+    ).timeout(
+      const Duration(seconds: 30),
+      onTimeout: () => throw Exception('Hết thời gian chờ khi lấy danh sách tab (30s)'),
     );
 
     final body = jsonDecode(res.body) as Map<String, dynamic>;
@@ -29,18 +33,17 @@ class ThesisSheetService {
   }
 
   Future<Map<String, dynamic>> importFromGoogleSheetUrl(String sheetUrl, {List<String>? sheetNames}) async {
-    final baseUrl = dotenv.env['BACKEND_BASE_URL']?.trim().isNotEmpty == true
-        ? dotenv.env['BACKEND_BASE_URL']!.trim()
-        : 'http://127.0.0.1:8080';
-
     final res = await http.post(
-      Uri.parse('$baseUrl/workflow/sheet/import'),
+      Uri.parse('$_backendBaseUrl/workflow/sheet/import'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'sheetUrl': sheetUrl,
         'strictValidation': true,
         if (sheetNames != null && sheetNames.isNotEmpty) 'sheetNames': sheetNames,
       }),
+    ).timeout(
+      const Duration(minutes: 5),
+      onTimeout: () => throw Exception('Hết thời gian chờ khi tạo CMT (5 phút)'),
     );
 
     final body = jsonDecode(res.body) as Map<String, dynamic>;
@@ -49,6 +52,26 @@ class ThesisSheetService {
       throw Exception(err);
     }
 
+    return body;
+  }
+
+  Future<Map<String, dynamic>> evaluateCmtWithAi(String cmtJsonPath) async {
+    final res = await http.post(
+      Uri.parse('$_backendBaseUrl/workflow/cmt/evaluate'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'cmtJsonPath': cmtJsonPath}),
+    ).timeout(
+      const Duration(minutes: 15),
+      onTimeout: () => throw Exception('Hết thời gian chờ đánh giá AI (15 phút)'),
+    );
+
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    // Only throw on HTTP error codes — ok:false means partial student failures,
+    // still return the body so the result dialog can show what succeeded.
+    if (res.statusCode >= 400) {
+      final err = (body['error'] as Map<String, dynamic>?)?['message']?.toString() ?? res.body;
+      throw Exception(err);
+    }
     return body;
   }
 
