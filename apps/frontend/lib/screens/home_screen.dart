@@ -761,7 +761,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(width: 8),
             _TopBarButton(
               icon: Icons.cloud_download_outlined,
-              label: _isImportingSheet ? 'Đang tạo CMT...' : 'Import link -> Tạo CMT',
+              label: _isImportingSheet ? 'Đang import link...' : 'Import link',
               color: const Color(0xFF8957E5),
               onPressed: _isImportingSheet ? null : _showImportSheetDialog,
             ),
