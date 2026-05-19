@@ -11,6 +11,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/grade_models.dart';
@@ -41,6 +42,62 @@ class _HomeScreenState extends State<HomeScreen> {
   bool                _isEvaluating = false;
   final List<String>  _cmtJsonPaths = [];
   final TextEditingController _sheetUrlController = TextEditingController();
+  final ScrollController _infoHorizontalController = ScrollController();
+  final ScrollController _reviewHorizontalController = ScrollController();
+  final Map<String, Map<String, String>> _manualInfoByRoll = {};
+
+  @override
+  void dispose() {
+    _sheetUrlController.dispose();
+    _infoHorizontalController.dispose();
+    _reviewHorizontalController.dispose();
+    super.dispose();
+  }
+
+  String _manualInfo(String roll, String key, String original) {
+    return _manualInfoByRoll[roll]?[key] ?? original;
+  }
+
+  Future<void> _editInfoForStudent(StudentRecord stu, {String comment = '', String agree = '', String revised = '', String disagree = '', String note = ''}) async {
+    final saved = _manualInfoByRoll[stu.roll] ?? {};
+    final cComment = TextEditingController(text: _manualInfo(stu.roll, 'comment', comment));
+    final cAgree = TextEditingController(text: _manualInfo(stu.roll, 'agree', agree));
+    final cRevised = TextEditingController(text: _manualInfo(stu.roll, 'revised', revised));
+    final cDisagree = TextEditingController(text: _manualInfo(stu.roll, 'disagree', disagree));
+    final cNote = TextEditingController(text: _manualInfo(stu.roll, 'note', note));
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF161B22),
+        title: Text('Edit: ${stu.roll}', style: const TextStyle(color: Colors.white)),
+        content: SizedBox(
+          width: 520,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            TextField(controller: cComment, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: 'Comment')),
+            TextField(controller: cAgree, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: 'Agree_to_defense')),
+            TextField(controller: cRevised, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: 'Revised_for_the_second_defennse')),
+            TextField(controller: cDisagree, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: 'Disagree_to_defense')),
+            TextField(controller: cNote, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: 'Note')),
+          ]),
+        ),
+        actions: [TextButton(onPressed: ()=>Navigator.pop(ctx,false), child: const Text('Hủy')), FilledButton(onPressed: ()=>Navigator.pop(ctx,true), child: const Text('Lưu'))],
+      ),
+    );
+
+    if (ok == true) {
+      setState(() {
+        _manualInfoByRoll[stu.roll] = {
+          ...saved,
+          'comment': cComment.text.trim(),
+          'agree': cAgree.text.trim(),
+          'revised': cRevised.text.trim(),
+          'disagree': cDisagree.text.trim(),
+          'note': cNote.text.trim(),
+        };
+      });
+    }
+  }
 
   // Columns hiển thị — luôn có STT, Roll, Name, Comment + các Grade components
   List<String> get _gradeComponents {
@@ -762,7 +819,7 @@ class _HomeScreenState extends State<HomeScreen> {
             _buildInfoBar(),
             _buildClassSelector(),
             const Divider(color: Color(0xFF21262D), height: 1),
-            Expanded(child: _buildDataTable()),
+            Expanded(child: _buildClassTabs()),
           ] else if (!_isLoading)
             Expanded(child: _buildEmptyState()),
           if (_isLoading)
@@ -832,13 +889,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
 
           if (_fgData != null) ...[
-            const SizedBox(width: 8),
-            _TopBarButton(
-              icon: Icons.table_chart_outlined,
-              label: _isCreatingSheet ? 'Đang tạo Sheet...' : 'Tạo Google Sheet',
-              color: const Color(0xFF1F6FEB),
-              onPressed: _isCreatingSheet ? null : _createThesisSheet,
-            ),
+
             const SizedBox(width: 8),
             _TopBarButton(
               icon: Icons.cloud_download_outlined,
@@ -892,11 +943,11 @@ class _HomeScreenState extends State<HomeScreen> {
               label: 'Lớp',
               value: '${data.subjectClasses.length} lớp'),
           const SizedBox(width: 16),
-          if (_selectedClass != null)
+          if (_fgData != null)
             _InfoChip(
                 icon: Icons.people_outline,
                 label: 'Sinh viên',
-                value: '${_selectedClass!.students.length} SV'),
+                value: '${_fgData!.subjectClasses.fold<int>(0, (sum, sc) => sum + sc.students.length)} SV'),
         ],
       ),
     );
@@ -950,6 +1001,37 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ── DataTable hiển thị sinh viên ──────────────────────────
 
+  Widget _buildClassTabs() {
+    return DefaultTabController(
+      length: 2,
+      child: Column(
+        children: [
+          Container(
+            color: const Color(0xFF0D1117),
+            child: const TabBar(
+              isScrollable: true,
+              labelColor: Color(0xFFE6EDF3),
+              unselectedLabelColor: Color(0xFF8B949E),
+              indicatorColor: Color(0xFF1F6FEB),
+              tabs: [
+                Tab(text: 'Thông tin nhóm'),
+                Tab(text: 'Thông tin khóa luận'),
+              ],
+            ),
+          ),
+          Expanded(
+            child: TabBarView(
+              children: [
+                _buildDataTable(),
+                _buildThesisReviewTable(),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildDataTable() {
     final students = _selectedClass?.students ?? [];
     final components = _gradeComponents;
@@ -963,10 +1045,25 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    return SingleChildScrollView(
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
+    return ScrollConfiguration(
+      behavior: const MaterialScrollBehavior().copyWith(
+        dragDevices: {
+          PointerDeviceKind.mouse,
+          PointerDeviceKind.touch,
+          PointerDeviceKind.trackpad,
+          PointerDeviceKind.stylus,
+          PointerDeviceKind.unknown,
+        },
+      ),
+      child: Scrollbar(
+        controller: _infoHorizontalController,
+        thumbVisibility: false,
+        trackVisibility: false,
+        interactive: true,
+        child: SingleChildScrollView(
+          controller: _infoHorizontalController,
+          scrollDirection: Axis.horizontal,
+          child: DataTable(
           headingRowColor: WidgetStateProperty.all(const Color(0xFF161B22)),
           dataRowColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.hovered)) {
@@ -997,8 +1094,16 @@ class _HomeScreenState extends State<HomeScreen> {
             // Thêm cột cho từng grade component
             for (final comp in components) _col(comp, width: 130),
             _col('Comment', width: 200),
+            _col('Agree_to_defense', width: 140),
+            _col('Revised_for_the_second_defennse', width: 240),
+            _col('Disagree_to_defense', width: 160),
+            _col('Note', width: 200),
           ],
           rows: students.map((stu) {
+            final agree = _gradeByAlias(stu, const ['agree_to_defense']);
+            final revised = _gradeByAlias(stu, const ['revised_for_the_second_defense', 'revised_for_the_second_defennse']);
+            final disagree = _gradeByAlias(stu, const ['disagree_to_defense', 'disagree_to_defend']);
+            final note = _gradeByAlias(stu, const ['note', 'ai_note']);
             return DataRow(
               cells: [
                 DataCell(Text(
@@ -1019,18 +1124,134 @@ class _HomeScreenState extends State<HomeScreen> {
                         .grade,
                   )),
                 DataCell(
-                  Text(
-                    stu.comment.isEmpty ? '—' : stu.comment,
-                    style: TextStyle(
-                      color: stu.comment.isEmpty
-                          ? const Color(0xFF30363D)
-                          : const Color(0xFFE6EDF3),
+                  SizedBox(
+                    width: 200,
+                    child: Text(
+                      _manualInfo(stu.roll, 'comment', stu.comment).trim().isEmpty
+                          ? '—'
+                          : _manualInfo(stu.roll, 'comment', stu.comment).trim(),
+                      style: const TextStyle(color: Color(0xFFE6EDF3)),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ),
+                DataCell(Text(_safe(_manualInfo(stu.roll, 'agree', agree)))),
+                DataCell(Text(_safe(_manualInfo(stu.roll, 'revised', revised)))),
+                DataCell(Text(_safe(_manualInfo(stu.roll, 'disagree', disagree)))),
+                DataCell(Row(
+                  children: [
+                    Expanded(child: Text(_safe(_manualInfo(stu.roll, 'note', note)))),
+                    IconButton(
+                      tooltip: 'Edit',
+                      onPressed: () => _editInfoForStudent(
+                        stu,
+                        comment: _manualInfo(stu.roll, 'comment', stu.comment),
+                        agree: _manualInfo(stu.roll, 'agree', agree),
+                        revised: _manualInfo(stu.roll, 'revised', revised),
+                        disagree: _manualInfo(stu.roll, 'disagree', disagree),
+                        note: _manualInfo(stu.roll, 'note', note),
+                      ),
+                      icon: const Icon(Icons.edit, size: 16, color: Color(0xFF8B949E)),
+                    ),
+                  ],
+                )),
               ],
             );
           }).toList(),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _gradeByAlias(StudentRecord stu, List<String> aliases) {
+    final aliasSet = aliases.map((e) => e.trim().toLowerCase()).toSet();
+    for (final g in stu.grades) {
+      if (aliasSet.contains(g.component.trim().toLowerCase())) {
+        return g.grade.trim();
+      }
+    }
+    return '';
+  }
+
+  String _safe(String v) => v.trim().isEmpty ? '—' : v.trim();
+
+  Widget _buildThesisReviewTable() {
+    final students = _selectedClass?.students ?? [];
+
+    if (students.isEmpty) {
+      return const Center(
+        child: Text(
+          'Lớp này không có sinh viên.',
+          style: TextStyle(color: Color(0xFF8B949E)),
+        ),
+      );
+    }
+
+    final first = students.first;
+    final titleVi = _gradeByAlias(first, const ['vietnamese_title', 'title_vn', 'Tên khóa luận (Tiếng Việt)']);
+    final titleEn = _gradeByAlias(first, const ['english_title', 'title_en', 'Tên khóa luận (Tiếng Anh)']);
+    final contentReview = _gradeByAlias(first, const ['content_review', 'Nhận xét GV về nội dung khóa luận']);
+    final formReview = _gradeByAlias(first, const ['format_review', 'Nhận xét GV về hình thức khóa luận']);
+    final attitudeReview = _gradeByAlias(first, const ['attitude_review', 'Nhận xét GV về thái độ sinh viên']);
+    final achievement = _gradeByAlias(first, const ['achievement_level', 'Kết luận - Mức độ đạt yêu cầu']);
+    final limitation = _gradeByAlias(first, const ['limitation', 'Kết luận - Hạn chế']);
+    final contributionRatio = _gradeByAlias(first, const ['contribution_ratio', 'contribution', 'Tỉ lệ đóng góp']);
+    final groupId = _gradeByAlias(first, const ['group_id', 'group_code', 'Mã nhóm']);
+    final thesisId = _gradeByAlias(first, const ['thesis_id', 'topic_id', 'Mã đề tài']);
+
+    return Scrollbar(
+      controller: _reviewHorizontalController,
+      thumbVisibility: false,
+      trackVisibility: false,
+      interactive: true,
+      child: SingleChildScrollView(
+        controller: _reviewHorizontalController,
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          headingRowColor: WidgetStateProperty.all(const Color(0xFF161B22)),
+          dataRowColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.hovered)) return const Color(0xFF21262D);
+            return Colors.transparent;
+          }),
+          dividerThickness: 0.5,
+          border: TableBorder(
+            horizontalInside: const BorderSide(color: Color(0xFF21262D), width: 0.5),
+            bottom: const BorderSide(color: Color(0xFF21262D), width: 0.5),
+          ),
+          headingTextStyle: const TextStyle(
+            color: Color(0xFF8B949E),
+            fontWeight: FontWeight.w600,
+            fontSize: 12,
+            letterSpacing: 0.5,
+          ),
+          dataTextStyle: const TextStyle(color: Color(0xFFE6EDF3), fontSize: 13),
+          columns: [
+            _col('Mã nhóm', width: 120),
+            _col('Mã đề tài', width: 120),
+            _col('Tên khóa luận (Tiếng Việt)', width: 220),
+            _col('Tên khóa luận (Tiếng Anh)', width: 220),
+            _col('Nhận xét GV về nội dung khóa luận', width: 260),
+            _col('Nhận xét GV về hình thức khóa luận', width: 260),
+            _col('Nhận xét GV về thái độ sinh viên', width: 240),
+            _col('Kết luận - Mức độ đạt yêu cầu', width: 220),
+            _col('Kết luận - Hạn chế', width: 220),
+            _col('Tỉ lệ đóng góp', width: 140),
+          ],
+          rows: [
+            DataRow(cells: [
+              DataCell(SizedBox(width: 120, child: Text(_safe(groupId)))),
+              DataCell(SizedBox(width: 120, child: Text(_safe(thesisId)))),
+              DataCell(SizedBox(width: 220, child: Text(_safe(titleVi)))),
+              DataCell(SizedBox(width: 220, child: Text(_safe(titleEn)))),
+              DataCell(SizedBox(width: 260, child: Text(_safe(contentReview)))),
+              DataCell(SizedBox(width: 260, child: Text(_safe(formReview)))),
+              DataCell(SizedBox(width: 240, child: Text(_safe(attitudeReview)))),
+              DataCell(SizedBox(width: 220, child: Text(_safe(achievement)))),
+              DataCell(SizedBox(width: 220, child: Text(_safe(limitation)))),
+              DataCell(SizedBox(width: 140, child: Text(_safe(contributionRatio)))),
+            ]),
+          ],
         ),
       ),
     );
