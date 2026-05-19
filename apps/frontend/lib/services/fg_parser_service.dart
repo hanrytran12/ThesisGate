@@ -138,7 +138,7 @@ class FgParserService {
         );
       }
 
-      return FgParserResult.success(fgOutput, p.basename(filePath));
+      return FgParserResult.success(fgOutput, p.basename(filePath), filePath);
     } on FormatException catch (e) {
       return FgParserResult.error(
         'JSON không hợp lệ từ decoder.exe:\n${e.message}\n\n'
@@ -146,6 +146,91 @@ class FgParserService {
       );
     }
   }
+
+  Future<SaveCommentToFgResult> saveCommentsToFg({
+    required String fgPath,
+    required Map<String, String> commentsByRoll,
+  }) async {
+    final decoderPath = _findDecoderPath();
+    if (decoderPath == null) {
+      return SaveCommentToFgResult.error('Không tìm thấy decoder.exe');
+    }
+
+    final tempFile = File(
+      p.join(Directory.systemTemp.path, 'thesisgate_comments_${DateTime.now().millisecondsSinceEpoch}.json'),
+    );
+
+    try {
+      await tempFile.writeAsString(jsonEncode(commentsByRoll), encoding: utf8);
+
+      final processResult = await Process.run(
+        decoderPath,
+        ['--update-comments', fgPath, tempFile.path],
+        stdoutEncoding: utf8,
+        stderrEncoding: utf8,
+      ).timeout(
+        _timeout,
+        onTimeout: () => throw TimeoutException('decoder.exe timeout khi save comment'),
+      );
+
+      if (processResult.exitCode != 0) {
+        final err = (processResult.stderr as String).trim();
+        return SaveCommentToFgResult.error(
+          'Save Comment to .FG thất bại (exit ${processResult.exitCode})${err.isNotEmpty ? "\n$err" : ""}',
+        );
+      }
+
+      final out = (processResult.stdout as String).trim();
+      if (out.isEmpty) {
+        return SaveCommentToFgResult.error('decoder.exe không trả kết quả khi update comment');
+      }
+
+      final jsonMap = jsonDecode(out) as Map<String, dynamic>;
+      return SaveCommentToFgResult.success(
+        updated: (jsonMap['updated'] as num?)?.toInt() ?? 0,
+        failed: (jsonMap['failed'] as num?)?.toInt() ?? 0,
+        backupPath: (jsonMap['backupPath'] as String?) ?? '',
+      );
+    } on TimeoutException catch (e) {
+      return SaveCommentToFgResult.error('Timeout: ${e.message}');
+    } catch (e) {
+      return SaveCommentToFgResult.error('Lỗi save comment: $e');
+    } finally {
+      if (await tempFile.exists()) {
+        await tempFile.delete();
+      }
+    }
+  }
+}
+
+class SaveCommentToFgResult {
+  final bool ok;
+  final int updated;
+  final int failed;
+  final String backupPath;
+  final String? errorMessage;
+
+  const SaveCommentToFgResult._({
+    required this.ok,
+    this.updated = 0,
+    this.failed = 0,
+    this.backupPath = '',
+    this.errorMessage,
+  });
+
+  factory SaveCommentToFgResult.success({
+    required int updated,
+    required int failed,
+    required String backupPath,
+  }) => SaveCommentToFgResult._(
+        ok: true,
+        updated: updated,
+        failed: failed,
+        backupPath: backupPath,
+      );
+
+  factory SaveCommentToFgResult.error(String message) =>
+      SaveCommentToFgResult._(ok: false, errorMessage: message);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -156,16 +241,18 @@ class FgParserResult {
   final String? fileName;
   final String? errorMessage;
   final bool cancelled;
+  final String? filePath;
 
   const FgParserResult._({
     this.data,
     this.fileName,
     this.errorMessage,
     this.cancelled = false,
+    this.filePath,
   });
 
-  factory FgParserResult.success(FgOutput data, String fileName) =>
-      FgParserResult._(data: data, fileName: fileName);
+  factory FgParserResult.success(FgOutput data, String fileName, String filePath) =>
+      FgParserResult._(data: data, fileName: fileName, filePath: filePath);
 
   factory FgParserResult.error(String message) =>
       FgParserResult._(errorMessage: message);

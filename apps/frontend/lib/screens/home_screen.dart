@@ -33,6 +33,7 @@ class _HomeScreenState extends State<HomeScreen> {
   FgOutput?           _fgData;
   SubjectClassResult? _selectedClass;
   String?             _fileName;
+  String?             _filePath;
   bool                _isLoading = false;
   String?             _errorMessage;
   bool                _isCreatingSheet = false;
@@ -136,6 +137,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _selectedClass = result.data!.subjectClasses.isNotEmpty
           ? result.data!.subjectClasses.first
           : null;
+      _filePath      = result.filePath;
       _isLoading    = false;
     });
   }
@@ -144,11 +146,44 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _selectedClass = value);
   }
 
+  Future<void> _saveCommentToFg() async {
+    if (_selectedClass == null || _filePath == null) return;
+
+    final comments = <String, String>{};
+    for (final stu in _selectedClass!.students) {
+      comments[stu.roll] = _manualInfo(stu.roll, 'comment', stu.comment).trim();
+    }
+
+    setState(() => _isLoading = true);
+    final result = await _parserService.saveCommentsToFg(
+      fgPath: _filePath!,
+      commentsByRoll: comments,
+    );
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    if (!result.ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(backgroundColor: const Color(0xFFDA3633), content: Text(result.errorMessage ?? 'Save thất bại')),
+      );
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: const Color(0xFF238636),
+        content: Text('Save Comment to .FG xong: ${result.updated} thành công, ${result.failed} thất bại. Backup: ${result.backupPath}'),
+        duration: const Duration(seconds: 6),
+      ),
+    );
+  }
+
   void _clearData() {
     setState(() {
       _fgData        = null;
       _selectedClass = null;
       _fileName      = null;
+      _filePath      = null;
       _errorMessage  = null;
       _cmtJsonPaths.clear();
     });
@@ -903,6 +938,13 @@ class _HomeScreenState extends State<HomeScreen> {
               label: _isEvaluating ? 'Đang đánh giá...' : 'Đánh giá với AI',
               color: const Color(0xFF6E40C9),
               onPressed: _isEvaluating ? null : _evaluateWithAi,
+            ),
+            const SizedBox(width: 8),
+            _TopBarButton(
+              icon: Icons.save_outlined,
+              label: _isLoading ? 'Đang lưu...' : 'Save Changes',
+              color: const Color(0xFF1F6FEB),
+              onPressed: _isLoading ? null : _saveCommentToFg,
             ),
             const SizedBox(width: 8),
 
