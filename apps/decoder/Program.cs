@@ -20,12 +20,17 @@ namespace FgDecoder
             {
                 return BuildCmt(args[1], args[2]);
             }
+            if (args.Length >= 3 && args[0] == "--update-comments")
+            {
+                return UpdateComments(args[1], args[2]);
+            }
 
             if (args.Length < 1)
             {
                 Console.Error.WriteLine("Usage: decoder.exe <path_to_file.fg>");
                 Console.Error.WriteLine("       decoder.exe <path_to_file.fg> --debug");
                 Console.Error.WriteLine("       decoder.exe --build-cmt <input.json> <output.cmt>");
+                Console.Error.WriteLine("       decoder.exe --update-comments <input.fg> <comments.json>");
                 return 1;
             }
 
@@ -513,6 +518,101 @@ namespace FgDecoder
             catch (Exception ex)
             {
                 Console.Error.WriteLine("BuildCmt ERROR: " + ex.Message);
+                return 1;
+            }
+        }
+
+        static int UpdateComments(string fgPath, string commentsJsonPath)
+        {
+            try
+            {
+                if (!File.Exists(fgPath))
+                {
+                    Console.Error.WriteLine("UpdateComments ERROR: input .fg not found");
+                    return 1;
+                }
+                if (!File.Exists(commentsJsonPath))
+                {
+                    Console.Error.WriteLine("UpdateComments ERROR: comments json not found");
+                    return 1;
+                }
+
+                var map = JsonConvert.DeserializeObject<Dictionary<string, string>>(File.ReadAllText(commentsJsonPath))
+                          ?? new Dictionary<string, string>();
+                var normMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var kv in map)
+                {
+                    var k = NormalizeText(kv.Key)?.Trim();
+                    if (!string.IsNullOrWhiteSpace(k)) normMap[k] = NormalizeText(kv.Value) ?? "";
+                }
+
+                AppDomain.CurrentDomain.AssemblyResolve += ResolveAssembly;
+                object root;
+                using (var stream = new FileStream(fgPath, FileMode.Open, FileAccess.Read))
+                {
+                    var formatter = new BinaryFormatter { Binder = new AllowAllTypesBinder() };
+#pragma warning disable SYSLIB0011
+                    root = formatter.Deserialize(stream);
+#pragma warning restore SYSLIB0011
+                }
+
+                int success = 0, failed = 0;
+                var remaining = new HashSet<string>(normMap.Keys, StringComparer.OrdinalIgnoreCase);
+
+                var subjectClassGrades = GetField<IEnumerable>(root, "SubjectClassGrades");
+                if (subjectClassGrades != null)
+                {
+                    foreach (var scg in subjectClassGrades)
+                    {
+                        var studentsEnum = GetField<IEnumerable>(scg, "Students");
+                        if (studentsEnum == null) continue;
+                        foreach (var stu in studentsEnum)
+                        {
+                            if (stu == null) continue;
+                            var roll = NormalizeText(GetAnyStringField(stu, "Roll"))?.Trim();
+                            if (string.IsNullOrWhiteSpace(roll)) continue;
+                            if (!normMap.ContainsKey(roll)) continue;
+
+                            var comment = normMap[roll] ?? "";
+                            var t = stu.GetType();
+                            var p = t.GetProperty("Comment", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.IgnoreCase);
+                            if (p != null && p.CanWrite)
+                            {
+                                try { p.SetValue(stu, comment, null); success++; remaining.Remove(roll); }
+                                catch { failed++; }
+                            }
+                            else
+                            {
+                                failed++;
+                            }
+                        }
+                    }
+                }
+
+                failed += remaining.Count;
+
+                var backupPath = fgPath + ".bak";
+                File.Copy(fgPath, backupPath, true);
+#pragma warning disable SYSLIB0011
+                var outFormatter = new BinaryFormatter();
+                using (var outStream = new FileStream(fgPath, FileMode.Create, FileAccess.Write))
+                {
+                    outFormatter.Serialize(outStream, root);
+                }
+#pragma warning restore SYSLIB0011
+
+                Console.Write(JsonConvert.SerializeObject(new
+                {
+                    success = true,
+                    updated = success,
+                    failed,
+                    backupPath
+                }));
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine("UpdateComments ERROR: " + ex.Message);
                 return 1;
             }
         }
